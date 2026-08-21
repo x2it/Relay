@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 代理列表：服务器堆叠（节点列表隐喻） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 上层节点 -->
+    <path
+        android:strokeColor="@android:color/white"
+        android:fillColor="@android:color/transparent"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M5,5 H19 V9 H5 Z"/>
+    <!-- 中层节点 -->
+    <path
+        android:strokeColor="@android:color/white"
+        android:fillColor="@android:color/transparent"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M5,15 H19 V19 H5 Z"/>
+    <!-- 状态点 -->
+    <path
+        android:strokeColor="@android:color/white"
+        android:fillColor="@android:color/transparent"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M8,7 H8.01 M8,17 H8.01"/>
+</vector>

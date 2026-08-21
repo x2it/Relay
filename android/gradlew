@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+# FreeProxy Gradle wrapper (Unix/Linux/macOS)
+# 优先使用 gradle/wrapper/gradle-wrapper.jar；缺失则回退到本机 PATH 中的 gradle。
+
+APP_HOME=$(cd "$(dirname "$0")" && pwd)
+WRAPPER_JAR="$APP_HOME/gradle/wrapper/gradle-wrapper.jar"
+
+if [ -f "$WRAPPER_JAR" ]; then
+  exec java -Xmx64m -Xms64m -classpath "$WRAPPER_JAR" org.gradle.wrapper.GradleWrapperMain "$@"
+elif command -v gradle >/dev/null 2>&1; then
+  echo "[FreeProxy] 未检测到 gradle-wrapper.jar，使用本机 PATH 中的 gradle."
+  exec gradle "$@"
+else
+  echo "[FreeProxy] 未检测到 gradle-wrapper.jar，且本机未安装 gradle."
+  echo "请在 Android Studio 中打开该项目（会自动下载 Gradle 8.5），"
+  echo "或手动执行一次:  gradle wrapper --gradle-version 8.5"
+  exit 1
+fi

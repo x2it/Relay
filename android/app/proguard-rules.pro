@@ -1,0 +1,2 @@
+-keep class com.freeproxy.app.data.model.** { *; }
+-keep class org.conscrypt.** { *; }

@@ -1,0 +1,34 @@
+<resources>
+    <string name="app_name">Relay</string>
+    <string name="connected">已连接</string>
+    <string name="disconnected">未连接</string>
+    <string name="connecting">连接中…</string>
+    <string name="disconnecting">断开中…</string>
+    <string name="tab_home">首页</string>
+    <string name="tab_proxies">代理</string>
+    <string name="tab_settings">设置</string>
+    <string name="btn_discover">发现代理</string>
+    <string name="btn_connect">连接</string>
+    <string name="btn_disconnect">断开</string>
+    <string name="btn_test_speed">测速</string>
+    <string name="btn_import">导入</string>
+    <string name="btn_export">导出</string>
+    <string name="hint_empty">暂无代理，点击「发现代理」开始</string>
+    <string name="label_latency">延迟</string>
+    <string name="label_speed">速度</string>
+    <string name="label_country">地区</string>
+    <string name="label_type">类型</string>
+    <string name="label_anonymity">匿名度</string>
+    <string name="msg_fetching">正在从代理源抓取…</string>
+    <string name="msg_fetch_done">抓取完成，%d 个代理</string>
+    <string name="msg_test_done">测速完成</string>
+    <string name="msg_import_done">导入 %d 个代理</string>
+    <string name="msg_export_done">导出完成</string>
+    <string name="msg_no_vpn_prepare">需要系统VPN授权</string>
+    <string name="msg_invalid_proxy">请先在「代理」页选一个节点，再点连接</string>
+    <string name="vpn_notification_channel">VPN 连接状态</string>
+    <string name="vpn_notification_title">Relay VPN</string>
+    <string name="vpn_notification_connected">代理隧道已建立</string>
+    <string name="vpn_notification_connecting">正在建立隧道…</string>
+    <string name="default_test_url">https://www.google.com</string>
+</resources>

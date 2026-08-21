@@ -1,78 +1,94 @@
-# LiteProxy
+# LiteProxy / Relay
 
-轻量级免费代理工具，一键抓取、验证、转发公开代理，支持智能分流。
+免费代理工具，提供桌面版与 Android 版，一键抓取、验证、转发公开代理。
 
-## 功能
+## 两个版本
 
-- **代理抓取**：内置 23+ 公开代理源（TheSpeedX、Monosans、ProxyScrape 等），并发抓取，自动去重
-- **代理验证**：多线程验证连通性 + CONNECT 隧道能力 + TLS 握手 + 测速
-- **本地转发**：内置 HTTP 代理服务器，支持 HTTP / SOCKS5 上游代理
-- **智能分流**：国内域名直连、海外域名走代理，可自定义规则
-- **系统代理**：一键开启/关闭 Windows 系统代理，两阶段提交 + 必达恢复
-- **紧急恢复**：异常退出或一键紧急恢复网络，强制还原系统代理设置
-- **连通性诊断**：自动逐项检查端口、代理池、外网、隧道、浏览器代理配置
-- **Token 鉴权**：可选本地代理端口鉴权，防止局域网他人蹭用
-- **数据管理**：JSON / CSV / TXT 导入导出，代理锁定，排序过滤
+| 版本 | 平台 | 路径 | 状态 |
+|------|------|------|------|
+| LiteProxy | Windows 桌面 | 根目录 | 稳定 |
+| Relay | Android | `android/` | v1.2.0 |
 
-## 快速开始
+---
 
-### 运行源码
+## Relay（Android 版）
+
+轻量代理应用，抓取公开代理、四层验证、一键连接 VPN 隧道。
+
+### 功能
+
+- 代理抓取：内置 20+ 公开源，自动去重
+- 四层验证：L1 TCP → L2 HTTP → L3 HTTPS(Google) → L4 站点(YouTube/Facebook)
+- 智能筛选：跳过 30 分钟内已验证的，只测需要测的；并发数可调（默认 8）
+- 一键连接：VPN 隧道 + 前台通知 + 实时网速
+- 流量统计：实时速率（KB/s）+ 累计流量
+- 智能分流：国内直连、海外走代理，可排除指定 App
+
+### 下载
+
+前往 [Releases](../../releases) 下载最新 APK，直接覆盖安装。
+
+### 技术栈
+
+- Kotlin + Jetpack Compose（Material 3）
+- Room + DataStore（持久化）
+- VpnService（TUN 隧道）
+- OkHttp（代理验证）
+- targetSdk 33（兼容 Android 14）
+
+### 构建
+
+```bash
+cd android
+./gradlew assembleDebug
+# 输出：app/build/outputs/apk/debug/app-debug.apk
+```
+
+---
+
+## LiteProxy（桌面版）
+
+Windows 桌面代理工具，GUI 基于 tkinter。
+
+### 功能
+
+- 代理抓取：内置 20+ 公开代理源
+- 代理验证：连通性 + CONNECT 隧道 + TLS + 测速
+- 本地转发：内置 HTTP 代理服务器
+- 智能分流：国内直连、海外走代理
+- 系统代理：一键开启 Windows 系统代理
+
+### 运行
 
 ```bash
 pip install -r requirements.txt
 python main.py
 ```
 
-### 打包为 exe
+### 打包
 
 ```powershell
-# 便携版（onedir，推荐）
 powershell -ExecutionPolicy Bypass -File build.ps1 portable
-
-# 单文件版（onefile）
-powershell -ExecutionPolicy Bypass -File build.ps1 installer
 ```
 
-## 使用流程
+### 技术栈
 
-1. 点击「抓取」从公开源获取代理列表
-2. 点击「验证」测试代理连通性和速度
-3. 点击「启动」开启本地代理服务器
-4. 点击「系统代理」将 Windows 代理指向本地端口
-5. 浏览器访问目标网站即可
+Python 3.10+ / tkinter / requests / beautifulsoup4 / PyInstaller
 
-也可直接点击「一键流程」自动完成 抓取 → 验证 → 启动。
+---
 
 ## 项目结构
 
 ```
-proxy_tool/
-├── main.py              # 程序入口
-├── config.py            # 配置与常量
-├── build.ps1            # 打包脚本
-├── LiteProxy.spec       # PyInstaller 配置
-├── requirements.txt     # 依赖
-├── core/
-│   ├── fetcher.py       # 代理抓取
-│   ├── checker.py       # 代理验证与测速
-│   ├── local_proxy.py   # 本地代理服务器 + 系统代理管理
-│   └── store.py         # 数据存储与导入导出
-├── ui/
-│   ├── main_window.py   # 主窗口
-│   ├── dialogs.py       # 设置/源管理/分流规则对话框
-│   └── style.py         # 主题样式
-└── data/
-    ├── sources.json      # 代理源配置
-    └── proxies.json     # 代理数据（运行时生成）
+.
+├── android/              # Relay Android 版
+│   ├── app/src/main/     # Kotlin 源码
+│   └── build.gradle.kts
+├── core/                 # LiteProxy 桌面版核心
+├── ui/                   # LiteProxy 桌面版 UI
+├── main.py               # 桌面版入口
+└── README.md
 ```
-
-## 技术栈
-
-- Python 3.8+
-- tkinter（GUI）
-- requests（HTTP 请求）
-- beautifulsoup4（HTML 解析）
-- PyInstaller（打包）
 
 ## 许可证
 

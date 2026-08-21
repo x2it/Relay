@@ -25,3 +25,19 @@ data/proxies.json
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ===== Android (android/) =====
+android/.gradle/
+android/.idea/
+android/local.properties
+android/build/
+android/app/build/
+android/captures/
+android/.cxx/
+android/*.iml
+android/app/*.iml
+android/outputs/
+android/build_log*.txt
+android/build-*.log
+android/build_check*.txt
+android/.trae/
