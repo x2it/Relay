@@ -4,11 +4,14 @@
 
 ## 功能
 
-- **代理抓取**：内置 20+ 公开代理源（TheSpeedX、Monosans、ProxyScrape 等），并发抓取，自动去重
+- **代理抓取**：内置 23+ 公开代理源（TheSpeedX、Monosans、ProxyScrape 等），并发抓取，自动去重
 - **代理验证**：多线程验证连通性 + CONNECT 隧道能力 + TLS 握手 + 测速
 - **本地转发**：内置 HTTP 代理服务器，支持 HTTP / SOCKS5 上游代理
 - **智能分流**：国内域名直连、海外域名走代理，可自定义规则
-- **系统代理**：一键开启/关闭 Windows 系统代理，异常自动恢复
+- **系统代理**：一键开启/关闭 Windows 系统代理，两阶段提交 + 必达恢复
+- **紧急恢复**：异常退出或一键紧急恢复网络，强制还原系统代理设置
+- **连通性诊断**：自动逐项检查端口、代理池、外网、隧道、浏览器代理配置
+- **Token 鉴权**：可选本地代理端口鉴权，防止局域网他人蹭用
 - **数据管理**：JSON / CSV / TXT 导入导出，代理锁定，排序过滤
 
 ## 快速开始
@@ -38,6 +41,8 @@ powershell -ExecutionPolicy Bypass -File build.ps1 installer
 4. 点击「系统代理」将 Windows 代理指向本地端口
 5. 浏览器访问目标网站即可
 
+也可直接点击「一键流程」自动完成 抓取 → 验证 → 启动。
+
 ## 项目结构
 
 ```
@@ -63,7 +68,7 @@ proxy_tool/
 
 ## 技术栈
 
-- Python 3.10+
+- Python 3.8+
 - tkinter（GUI）
 - requests（HTTP 请求）
 - beautifulsoup4（HTML 解析）

@@ -5,7 +5,7 @@ import sys
 
 # 应用基础信息
 APP_NAME = "LiteProxy"
-APP_VERSION = "1.4.1"
+APP_VERSION = "1.5.0"
 
 # 数据目录：打包后放在 exe 同级，绿色版可携带
 if getattr(sys, "frozen", False):
@@ -90,18 +90,6 @@ DEFAULT_SOURCES = [
         "url": "https://cdn.jsdelivr.net/gh/roosterkid/openproxylist@main/HTTPS_RAW.txt",
         "parser": "plain",
         "protocol": "https",
-    },
-    {
-        "name": "ProxyScrape-HTTP",
-        "url": "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all",
-        "parser": "plain",
-        "protocol": "http",
-    },
-    {
-        "name": "ProxyScrape-SOCKS5",
-        "url": "https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks5&timeout=10000&country=all",
-        "parser": "plain",
-        "protocol": "socks5",
     },
     {
         "name": "ProxyScrape-HTTP",

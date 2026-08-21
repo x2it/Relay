@@ -11,8 +11,8 @@ build/
 dist/
 *.spec.bak
 
-# Runtime data
-data/settings.json
+# Runtime datadata/settings.json
+data/proxies.json
 
 # IDE
 .vscode/
