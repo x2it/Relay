@@ -41,3 +41,6 @@ android/build_log*.txt
 android/build-*.log
 android/build_check*.txt
 android/.trae/
+
+# Release binaries
+*.apk
