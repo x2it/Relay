@@ -66,7 +66,7 @@ class MainWindow:
     def __init__(self, root: tk.Tk):
         self.root = root
         apply_style(root)
-        root.title(f"{APP_NAME} v{APP_VERSION}")
+        root.title(APP_NAME)
         root.geometry("1180x720")
         root.minsize(960, 560)
         root.configure(bg=theme.COLOR_BG)
