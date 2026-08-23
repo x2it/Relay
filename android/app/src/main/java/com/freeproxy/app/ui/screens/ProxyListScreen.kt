@@ -59,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -156,6 +157,8 @@ fun ProxyListScreen(
     var showFilters by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var actionTarget by remember { mutableStateOf<ProxyInfo?>(null) }
+    var showScanner by remember { mutableStateOf(false) }
+    var scannedText by remember { mutableStateOf<String?>(null) }
 
     val activeFilterCount = remember(
         state.activeChips, state.type, state.anon, state.speed, state.countries
@@ -203,9 +206,10 @@ fun ProxyListScreen(
                 title = {
                     Column {
                         Text(
-                            "代理列表",
+                            "> proxy list",
                             style = MaterialTheme.typography.titleLarge,
                             color = OnSurface,
+                            fontFamily = FontFamily.Monospace,
                         )
                         val usable = state.items.count { it.workCount >= 1 }
                         Text(
@@ -218,6 +222,18 @@ fun ProxyListScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 actions = {
+                    // terminal 扫码入口：一键打开扫码器，扫到自动填入添加框
+                    Text(
+                        "[SCAN]",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Seed,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { showScanner = true }
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                    )
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_more_vert),
@@ -226,67 +242,33 @@ fun ProxyListScreen(
                             modifier = Modifier.size(22.dp),
                         )
                     }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        DropdownMenuItem(
-                            text = { Text("发现代理") },
-                            onClick = { menuOpen = false; onDiscover() },
-                            leadingIcon = { IconRes(id = R.drawable.ic_discover, tint = Seed, size = 18.dp) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("测速全部代理") },
-                            onClick = { menuOpen = false; onTestAll() },
-                            leadingIcon = { IconRes(id = R.drawable.ic_speed, tint = Seed, size = 18.dp) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("智能筛选") },
-                            onClick = { menuOpen = false; onSmartScan() },
-                            leadingIcon = { IconRes(id = R.drawable.ic_check, tint = Good, size = 18.dp) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("验证当前列表") },
-                            onClick = { menuOpen = false; onTestCurrent() },
-                            leadingIcon = { IconRes(id = R.drawable.ic_speed, tint = Seed, size = 18.dp) },
-                        )
-                        MenuDivider()
-                        DropdownMenuItem(
-                            text = { Text("清理失效代理") },
-                            onClick = { menuOpen = false; onClearBad8() },
-                            leadingIcon = { IconRes(id = R.drawable.ic_trash, tint = Bad, size = 18.dp) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("合并重复代理") },
-                            onClick = { menuOpen = false; onDeleteDupes() },
-                            leadingIcon = { IconRes(id = R.drawable.ic_refresh, tint = Warn, size = 18.dp) },
-                        )
-                        MenuDivider()
-                        DropdownMenuItem(
-                            text = { Text("导入代理") },
-                            onClick = { menuOpen = false; onImport() },
-                            leadingIcon = { IconRes(id = R.drawable.ic_import, tint = OnSurface, size = 18.dp) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("导出为 JSON") },
-                            onClick = { menuOpen = false; onExportJson() },
-                            leadingIcon = { IconRes(id = R.drawable.ic_file_json, tint = Good, size = 18.dp) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("导出为 TXT") },
-                            onClick = { menuOpen = false; onExportTxt() },
-                            leadingIcon = { IconRes(id = R.drawable.ic_export, tint = Warn, size = 18.dp) },
-                        )
-                        MenuDivider()
-                        DropdownMenuItem(
-                            text = { Text("清理失败代理") },
-                            onClick = { menuOpen = false; onClearBad() },
-                            leadingIcon = { IconRes(id = R.drawable.ic_trash, tint = Bad, size = 18.dp) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("清空全部代理") },
-                            onClick = { menuOpen = false; onClearAll() },
-                            leadingIcon = { IconRes(id = R.drawable.ic_trash, tint = Bad, size = 18.dp) },
-                        )
-                    }
+                    TerminalMenu(
+                        expanded = menuOpen,
+                        onDismiss = { menuOpen = false },
+                        groups = listOf(
+                            TerminalGroup("ops", listOf(
+                                TAction("fetch", "发现代理") { menuOpen = false; onDiscover() },
+                                TAction("test all", "测速全部") { menuOpen = false; onTestAll() },
+                                TAction("smart scan", "智能筛选") { menuOpen = false; onSmartScan() },
+                                TAction("verify", "验证当前") { menuOpen = false; onTestCurrent() },
+                            )),
+                            TerminalGroup("clean", listOf(
+                                TAction("rm bad", "清理失效") { menuOpen = false; onClearBad8() },
+                                TAction("merge dup", "合并重复") { menuOpen = false; onDeleteDupes() },
+                                TAction("rm failed", "清理失败") { menuOpen = false; onClearBad() },
+                            )),
+                            TerminalGroup("io", listOf(
+                                TAction("import", "导入") { menuOpen = false; onImport() },
+                                TAction("exp json", "导出 JSON") { menuOpen = false; onExportJson() },
+                                TAction("exp txt", "导出 TXT") { menuOpen = false; onExportTxt() },
+                            )),
+                            TerminalGroup("danger", listOf(
+                                TAction("wipe", "清空全部") { menuOpen = false; onClearAll() },
+                            )),
+                        ),
+                    )
                 },
+
             )
         },
     ) { innerPadding ->
@@ -459,9 +441,22 @@ fun ProxyListScreen(
         )
     }
 
+    if (showScanner) {
+        ScannerScreen(
+            onDismiss = { showScanner = false; scannedText = null },
+            onResult = { text ->
+                showScanner = false
+                scannedText = text
+                showAddDialog = true
+            },
+        )
+    }
+
     if (showAddDialog) {
         AddProxyDialog(
-            onDismiss = { showAddDialog = false },
+            onDismiss = { showAddDialog = false; scannedText = null },
+            initialPaste = scannedText,
+            onScan = { showAddDialog = false; showScanner = true },
             onAdd = { info ->
                 onAddProxy(info)
                 showAddDialog = false
@@ -831,20 +826,16 @@ private fun ProxyRow(
             .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // 左：国家 + 速度色块（统一）
-            Box(
-                Modifier.size(40.dp).clip(RoundedCornerShape(10.dp))
-                    .background(speedColor.copy(alpha = 0.14f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    (p.countryCode ?: p.country?.take(2) ?: "?").uppercase(),
-                    color = speedColor,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
-                )
-            }
-            Spacer(Modifier.width(12.dp))
+            // 左：terminal 选择标记 [ ] → [○]
+            Text(
+                if (selected) "[○]" else "[ ]",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 15.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                color = if (selected) Seed else OnSurfaceMute,
+                modifier = Modifier.width(36.dp),
+            )
+            Spacer(Modifier.width(8.dp))
 
             // 中：主信息（双行）
             Column(Modifier.weight(1f)) {
@@ -855,6 +846,7 @@ private fun ProxyRow(
                         style = MaterialTheme.typography.titleSmall,
                         color = OnSurface,
                         fontWeight = FontWeight.SemiBold,
+                        fontFamily = FontFamily.Monospace,
                         maxLines = 1,
                         modifier = Modifier.weight(1f, fill = false),
                     )
@@ -873,6 +865,14 @@ private fun ProxyRow(
                 Spacer(Modifier.height(4.dp))
                 // 行 2：延迟 + 速度等级（精简到两个）
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        (p.countryCode ?: p.country?.take(2) ?: "??").uppercase(),
+                        color = OnSurfaceDim,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    Spacer(Modifier.width(8.dp))
                     Text(
                         p.latencyMs?.let { "${it}ms" } ?: "未测",
                         color = latColor,
@@ -999,5 +999,79 @@ private fun IconRes(
         painter = painterResource(id = id),
         contentDescription = null, tint = tint,
         modifier = Modifier.size(size),
+    )
+}
+
+
+// ========================================================================
+// terminal 呼出菜单：分组 + 等宽 > cmd + 线条
+// ========================================================================
+private class TAction(val cmd: String, val desc: String, val run: () -> Unit)
+private class TerminalGroup(val title: String, val actions: List<TAction>)
+
+@Composable
+private fun TerminalMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    groups: List<TerminalGroup>,
+) {
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+    ) {
+        Column(
+            Modifier
+                .width(250.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Surface2)
+                .padding(vertical = 6.dp)
+        ) {
+            groups.forEachIndexed { gi, g ->
+                if (gi > 0) TDivider()
+                Text(
+                    "-- ${g.title} --",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = OnSurfaceMute,
+                    modifier = Modifier.padding(start = 14.dp, top = 8.dp, bottom = 2.dp),
+                )
+                g.actions.forEach { a ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = a.run)
+                            .padding(horizontal = 14.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "> ${a.cmd}",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = OnSurface,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            a.desc,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                            color = OnSurfaceDim,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TDivider() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+            .height(0.5.dp)
+            .background(Outline.copy(alpha = 0.3f))
     )
 }

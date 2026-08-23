@@ -8,13 +8,23 @@ import kotlinx.parcelize.Parcelize
 
 /**
  * 代理类型
+ * 明文代理：HTTP / HTTPS / SOCKS4 / SOCKS5
+ * 加密节点：VMESS / TROJAN / VLESS / SHADOWSOCKS（配合 sing-box 连接）
  */
 enum class ProxyType(val value: String) {
     HTTP("HTTP"),
     HTTPS("HTTPS"),
     SOCKS4("SOCKS4"),
     SOCKS5("SOCKS5"),
+    VMESS("VMess"),
+    TROJAN("Trojan"),
+    VLESS("VLESS"),
+    SHADOWSOCKS("Shadowsocks"),
     UNKNOWN("UNKNOWN");
+
+    /** 是否加密节点（需要 sing-box 出站，不能用普通代理隧道） */
+    val isEncryptedNode: Boolean
+        get() = this == VMESS || this == TROJAN || this == VLESS || this == SHADOWSOCKS
 
     companion object {
         fun from(s: String?): ProxyType =
@@ -22,6 +32,12 @@ enum class ProxyType(val value: String) {
                 ?: if (s?.contains("socks5", true) == true) SOCKS5
                 else if (s?.contains("socks4", true) == true) SOCKS4
                 else if (s?.contains("https", true) == true) HTTPS
+                else if (s?.contains("vmess", true) == true) VMESS
+                else if (s?.contains("trojan", true) == true) TROJAN
+                else if (s?.contains("vless", true) == true) VLESS
+                else if (s?.contains("shadowsocks", true) == true ||
+                    s?.contains("ss://", true) == true || s == "ss" ||
+                    s?.contains("ssr", true) == true) SHADOWSOCKS
                 else if (s?.contains("http", true) == true) HTTP
                 else UNKNOWN
     }
@@ -103,8 +119,13 @@ data class ProxyInfo(
     val lastSitesOk: String = "",        // 逗号分隔，例如 "google,yt,fb"
     val failReason: String? = null,      // 规范化失败原因
     val httpsTunnel: Boolean = true,     // true=支持 HTTPS CONNECT；false=L2通L3败=仅HTTP明文
+    // ===== v4：加密节点配置（VMess/Trojan/VLESS/SS）=====
+    /** 节点显示名（分享链接 #name / vmess ps） */
+    val nodeName: String? = null,
+    /** 加密节点完整配置（JSON，供 sing-box 出站；明文代理为 null） */
+    val configJson: String? = null,
 ) : Parcelable {
-    fun display(): String = "$host:$port"
+    fun display(): String = nodeName?.takeIf { it.isNotBlank() } ?: "$host:$port"
     fun successRate(): Double =
         if (workCount + failCount == 0) 0.0
         else workCount.toDouble() / (workCount + failCount)

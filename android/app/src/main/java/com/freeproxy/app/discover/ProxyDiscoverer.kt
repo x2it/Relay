@@ -1,5 +1,6 @@
 package com.freeproxy.app.discover
 
+import android.util.Base64
 import com.freeproxy.app.data.model.AnonymityLevel
 import com.freeproxy.app.data.model.ProxyInfo
 import com.freeproxy.app.data.model.ProxyType
@@ -15,6 +16,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
+import java.nio.charset.StandardCharsets
 import java.util.regex.Pattern
 
 /**
@@ -102,13 +104,15 @@ class ProxyDiscoverer(
      * 并发抓取所有源，返回(抓取列表, 新增入库数量)
      * 对每个源按 (url + mirrors) 逐个尝试，第一个非空即停止；主源失败走 mirror 时输出 "fallback" 进度。
      * 超时使用 src.timeoutMs（通过 OkHttpFactory.perCall 设置单 call 超时）
+     * sources 为空时自动合并「内置源 + 用户自定义源」（从数据库读取）
      */
     suspend fun discover(
-        sources: List<ProxySource> = BuiltinSources.default,
+        sources: List<ProxySource> = emptyList(),
         extraHeaders: Map<String, String> = mapOf("User-Agent" to "Mozilla/5.0 Relay/1.0"),
         onProgress: suspend (Progress) -> Unit = {},
     ): Pair<List<ProxyInfo>, Int> = withContext(Dispatchers.IO) {
-        val enabledSources = sources.filter { it.enabled }
+        val effective = if (sources.isEmpty()) repo.allSources() else sources
+        val enabledSources = effective.filter { it.enabled }
         val results = enabledSources.mapIndexed { idx, src ->
             async {
                 runCatching {
@@ -133,6 +137,11 @@ class ProxyDiscoverer(
                                 break
                             }
                         }
+                    }
+                    // 回写抓取状态（数据源页可视化 ok/err + 条数）
+                    runCatching {
+                        if (parsed.isEmpty()) repo.setSourceStatus(src.url, false, 0)
+                        else repo.setSourceStatus(src.url, true, parsed.size)
                     }
                     parsed
                 }.getOrDefault(emptyList())
@@ -159,16 +168,38 @@ class ProxyDiscoverer(
     }
 
     fun parse(text: String, src: ProxySource): List<ProxyInfo> {
-        val format = if (src.format == ProxySource.Format.AUTO) detectFormat(text) else src.format
+        // 0) 订阅整体 Base64：无明文 "://" 时先尝试整体解码再走常规解析
+        var body = text
+        if (!body.contains("://")) decodeBase64Body(body)?.let { body = it }
+        val format = if (src.format == ProxySource.Format.AUTO) detectFormat(body) else src.format
         val fallbackType = src.schemeHint ?: inferTypeFromName(src.name)
         val raw = when (format) {
-            ProxySource.Format.JSON -> parseJson(text, src.name, fallbackType)
-            ProxySource.Format.CSV -> parseCsv(text, src.name, fallbackType)
-            ProxySource.Format.PLAIN -> parsePlain(text, src.name, fallbackType)
-            ProxySource.Format.HTML -> parseHtml(text, src.name, fallbackType)
-            ProxySource.Format.AUTO -> parsePlain(text, src.name, fallbackType)
+            ProxySource.Format.JSON -> parseJson(body, src.name, fallbackType)
+            ProxySource.Format.CSV -> parseCsv(body, src.name, fallbackType)
+            ProxySource.Format.PLAIN -> parsePlain(body, src.name, fallbackType)
+            ProxySource.Format.HTML -> parseHtml(body, src.name, fallbackType)
+            ProxySource.Format.AUTO -> parsePlain(body, src.name, fallbackType)
         }
-        return raw.filter { !IpFilter.isBogon(it.host) }
+        // 加密节点 host 常为域名，跳过 bogon(IP) 过滤；明文代理仍过滤内网/保留地址
+        return raw.filter { it.type.isEncryptedNode || !IpFilter.isBogon(it.host) }
+    }
+
+    /**
+     * 整体 Base64 订阅解码：
+     * 内容仅含 Base64 字符集（兼容 urlsafe）且解码后出现分享链接或 ip:port 才认可，
+     * 防止把普通文本误当 Base64。
+     */
+    private fun decodeBase64Body(text: String): String? {
+        val compact = text.filter { !it.isWhitespace() }
+        if (compact.length < 24) return null
+        if (compact.any { !(it.isLetterOrDigit() || it in "+/=-_") }) return null
+        return runCatching {
+            val normalized = compact.replace('-', '+').replace('_', '/')
+            val decoded = String(Base64.decode(normalized, Base64.NO_WRAP), StandardCharsets.UTF_8)
+            if (decoded.contains("://") ||
+                Regex("\\d{1,3}(\\.\\d{1,3}){3}:\\d{1,5}").containsMatchIn(decoded)
+            ) decoded else null
+        }.getOrNull()
     }
 
     private fun inferTypeFromName(name: String): ProxyType = when {
@@ -197,6 +228,13 @@ class ProxyDiscoverer(
         val out = mutableListOf<ProxyInfo>()
         for (rawLine in text.lineSequence()) {
             val line = rawLine.trim().takeIf { it.isNotBlank() && !it.startsWith("#") } ?: continue
+
+            // 0) 加密节点分享链接（vmess/trojan/vless/ss）——订阅源主力形态
+            val shareNode = ShareLinkParser.parse(line, source)
+            if (shareNode != null) {
+                out.add(shareNode)
+                continue
+            }
 
             // 1) URL 格式 scheme://user:pass@host:port （复用 ProxyUrlParser）
             val proxy = parseProxyLine(line, fallbackType, null)

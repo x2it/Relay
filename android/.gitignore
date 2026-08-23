@@ -1,0 +1,29 @@
+# ===== Gradle / Android =====
+.gradle/
+build/
+*/build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# ===== Local env =====
+local.properties
+.idea/
+*.iml
+.DS_Store
+
+# ===== Relay dev temp =====
+.trae/
+build_log*.txt
+build-*.log
+README_BUILD.md
+Relay-*.apk
+
+# ===== sing-box core（42MB 二进制，不入库；构建前从官方 release 放置到 app/libs/）=====
+app/libs/libbox.aar
+app/libs/_aar_tmp/
+app/libs/_jar/

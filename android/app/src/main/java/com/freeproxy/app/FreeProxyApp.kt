@@ -10,6 +10,7 @@ import com.freeproxy.app.net.ValidationTester
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class FreeProxyApp : Application() {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -23,6 +24,10 @@ class FreeProxyApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // 首次启动把内置数据源种子化到数据库（自定义源功能的基础）
+        appScope.launch {
+            runCatching { repository.seedBuiltinSourcesIfEmpty() }
+        }
     }
 
     companion object {

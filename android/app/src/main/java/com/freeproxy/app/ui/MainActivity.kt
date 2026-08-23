@@ -14,7 +14,11 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -36,9 +40,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,9 +62,12 @@ import com.freeproxy.app.data.model.ProxyInfo
 import com.freeproxy.app.data.model.VpnStatus
 import com.freeproxy.app.ui.screens.HomeScreen
 import com.freeproxy.app.ui.screens.ProxyListScreen
+import com.freeproxy.app.ui.SourceViewModel
 import com.freeproxy.app.ui.screens.SettingsScreen
+import com.freeproxy.app.ui.screens.SourceManageScreen
 import com.freeproxy.app.ui.theme.FreeProxyTheme
 import com.freeproxy.app.ui.theme.OnSurfaceDim
+import com.freeproxy.app.ui.theme.Outline
 import com.freeproxy.app.ui.theme.Seed
 import com.freeproxy.app.ui.theme.Surface as SurfaceColor
 import com.freeproxy.app.ui.theme.Surface2
@@ -142,6 +151,7 @@ class MainActivity : ComponentActivity() {
         val homeVm: HomeViewModel = viewModel()
         val listVm: ProxyListViewModel = viewModel()
         val settingsVm: SettingsViewModel = viewModel()
+        val sourceVm: SourceViewModel = viewModel()
         homeVmRef = homeVm
 
         val homeState by homeVm.state.collectAsStateWithLifecycle()
@@ -303,6 +313,13 @@ class MainActivity : ComponentActivity() {
                                     pendingExportTxt = { uri -> settingsVm.doExport(uri, json = false) }
                                     exportTxtLauncher.launch("relay-${dateStamp()}.txt")
                                 },
+                                onOpenSources = { nav.navigate("sources") },
+                            )
+                        }
+                        composable("sources") {
+                            SourceManageScreen(
+                                vm = sourceVm,
+                                onBack = { nav.popBackStack() },
                             )
                         }
                     }
@@ -350,64 +367,63 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun BottomNav(nav: androidx.navigation.NavController) {
         val items = listOf(
-            BottomItem("home", R.string.tab_home, R.drawable.ic_tab_home),
-            BottomItem("proxies", R.string.tab_proxies, R.drawable.ic_tab_proxies),
-            BottomItem("settings", R.string.tab_settings, R.drawable.ic_tab_settings),
+            BottomItem("home", "[HOME]"),
+            BottomItem("proxies", "[LIST]"),
+            BottomItem("settings", "[CONF]"),
         )
         val backStackEntry by nav.currentBackStackEntryAsState()
         val curRoute = backStackEntry?.destination?.route
-        NavigationBar(
-            containerColor = Surface2,
-            tonalElevation = 0.dp,
-            modifier = Modifier.fillMaxWidth().height(64.dp),
-        ) {
-            items.forEach { item ->
-                val selected = curRoute == item.route ||
-                    backStackEntry?.destination?.hierarchy?.any { it.route == item.route } == true
-                NavigationBarItem(
-                    selected = selected,
-                    onClick = {
-                        nav.navigate(item.route) {
-                            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                    icon = {
-                        Icon(
-                            painter = painterResource(id = item.icon),
-                            contentDescription = null,
-                            modifier = Modifier.size(24.dp),
-                            tint = if (selected) Seed else OnSurfaceDim,
-                        )
-                    },
-                    label = {
+        Column(Modifier.fillMaxWidth().background(Surface2)) {
+            // 顶部分隔线：terminal 质感
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(0.5.dp)
+                    .background(Outline.copy(alpha = 0.4f))
+            )
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(60.dp)
+            ) {
+                items.forEach { item ->
+                    val selected = curRoute == item.route ||
+                        backStackEntry?.destination?.hierarchy?.any { it.route == item.route } == true
+                    val label = item.terminalLabel
+                    // terminal 风格：未选中=空格包围 HOME，选中=[HOME]
+                    val plain = " " + label.substring(1, label.length - 1) + " "
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable {
+                                nav.navigate(item.route) {
+                                    popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
                         Text(
-                            getString(item.labelRes),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
+                            if (selected) label else plain,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 13.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (selected) Seed else OnSurfaceDim,
                         )
-                    },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = Seed,
-                        selectedTextColor = Seed,
-                        indicatorColor = Seed.copy(alpha = 0.10f),
-                        unselectedIconColor = OnSurfaceDim,
-                        unselectedTextColor = OnSurfaceDim,
-                    ),
-                )
+                    }
+                }
             }
         }
     }
 
     private data class BottomItem(
         val route: String,
-        val labelRes: Int,
-        @DrawableRes val icon: Int,
+        val terminalLabel: String,
     )
 
     private fun dateStamp(): String =

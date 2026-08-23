@@ -1,36 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Relay 桌面图标前景（方案B 同心聚焦·精修）：细环 + 渐变核心 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- R 字母 - 极简手绘勾勒风 -->
-    <!-- 左竖 -->
+    <!-- 外环：对角线性渐变描边 -->
     <path
-        android:strokeColor="#6B8AFF"
-        android:strokeWidth="3.5"
+        android:pathData="M54,37 a17,17 0 1,0 0,34 a17,17 0 1,0 0,-34"
         android:fillColor="@android:color/transparent"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M38,38 L38,72"/>
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="37"
+                android:startY="37"
+                android:endX="71"
+                android:endY="71"
+                android:startColor="#A7B8FF"
+                android:endColor="#3A56C8"/>
+        </aapt:attr>
+    </path>
 
-    <!-- 上半弧 + 右上钩 -->
+    <!-- 核心光点：亮心径向渐变 -->
     <path
-        android:strokeColor="#6B8AFF"
-        android:strokeWidth="3.5"
-        android:fillColor="@android:color/transparent"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M38,38 C48,38 58,38 58,48 C58,56 50,58 38,58"/>
-
-    <!-- 右下斜腿 -->
-    <path
-        android:strokeColor="#6B8AFF"
-        android:strokeWidth="3.5"
-        android:fillColor="@android:color/transparent"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M44,58 L66,72"/>
+        android:pathData="M54,48 a6,6 0 1,0 0,12 a6,6 0 1,0 0,-12">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="54"
+                android:centerY="54"
+                android:gradientRadius="6"
+                android:startColor="#E6ECFF"
+                android:endColor="#4B6BE8"/>
+        </aapt:attr>
+    </path>
 
 </vector>

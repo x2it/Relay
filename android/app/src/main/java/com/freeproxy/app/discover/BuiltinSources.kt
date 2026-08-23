@@ -13,33 +13,35 @@ data class ProxySource(
     val timeoutMs: Int = 15_000,
     val enabled: Boolean = true,
     val mirrors: List<String> = emptyList(),
-    val category: Category = Category.B, // A=JSON原生API, B=GitHub RAW, C=HTML表, D=TXT/CSV镜像池
+    val category: Category = Category.B, // A=JSON原生API, B=GitHub RAW, C=HTML表, D=TXT/CSV镜像池, E=订阅(share-link/Base64)
 ) {
     enum class Format { AUTO, JSON, PLAIN, CSV, HTML }
-    enum class Category { A, B, C, D }
+    enum class Category { A, B, C, D, E, CUSTOM }
 }
 
 /**
  * GitHub RAW URL 镜像工厂：把 raw.githubusercontent.com 的 URL 转成两个镜像
- * mirrors[0] = fastgit 替换 host
- * mirrors[1] = ghproxy.com 前缀包装
+ * （fastgit / ghproxy.com 已停服，换用存活的 gh 前缀镜像）
+ * mirrors[0] = gh-proxy.com 前缀包装
+ * mirrors[1] = ghfast.top 前缀包装
  */
 private fun ghMirrors(url: String): List<String> {
     val origin = "https://raw.githubusercontent.com/"
     if (!url.startsWith(origin)) return emptyList()
     val suffix = url.removePrefix(origin) // USER/REPO/BRANCH/PATH
     return listOf(
-        "https://raw.fastgit.xyz/$suffix",
-        "https://ghproxy.com/https://raw.githubusercontent.com/$suffix",
+        "https://gh-proxy.com/https://raw.githubusercontent.com/$suffix",
+        "https://ghfast.top/https://raw.githubusercontent.com/$suffix",
     )
 }
 
 /**
- * 内置的公开免费代理源（≥25 个，4 类每类 ≥2 个）
- * A: JSON 原生 API (≥2)
- * B: GitHub RAW (≥12)
- * C: HTML 表解析 (≥2)
- * D: TXT/CSV 镜像池 (≥2)
+ * 内置的公开免费代理源（45 个，覆盖 HTTP/HTTPS/SOCKS4/SOCKS5 + 加密节点订阅）
+ * A: JSON 原生 API
+ * B: GitHub RAW（含 HTTPS / SOCKS4 补齐）
+ * C: HTML 表解析
+ * D: TXT/CSV 镜像池
+ * E: 订阅源（分享链接 / Base64 → ShareLinkParser 解析为 VMess/Trojan/VLESS/SS）
  */
 object BuiltinSources {
 
@@ -344,6 +346,192 @@ object BuiltinSources {
                 format = ProxySource.Format.PLAIN,
                 schemeHint = ProxyType.HTTP,
                 category = ProxySource.Category.D,
+            )
+        )
+
+        // ============== B 类补充：补齐 HTTPS / SOCKS4 覆盖 ==============
+        add(
+            ProxySource(
+                name = "github/TheSpeedX SOCKS4",
+                url = "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks4.txt",
+                format = ProxySource.Format.PLAIN,
+                schemeHint = ProxyType.SOCKS4,
+                category = ProxySource.Category.B,
+                timeoutMs = ghTimeout,
+                mirrors = ghMirrors("https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks4.txt"),
+            )
+        )
+        add(
+            ProxySource(
+                name = "github/monosans SOCKS4",
+                url = "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks4.txt",
+                format = ProxySource.Format.PLAIN,
+                schemeHint = ProxyType.SOCKS4,
+                category = ProxySource.Category.B,
+                timeoutMs = ghTimeout,
+                mirrors = ghMirrors("https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks4.txt"),
+            )
+        )
+        add(
+            ProxySource(
+                name = "github/jetkai SOCKS4",
+                url = "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-socks4.txt",
+                format = ProxySource.Format.PLAIN,
+                schemeHint = ProxyType.SOCKS4,
+                category = ProxySource.Category.B,
+                timeoutMs = ghTimeout,
+                mirrors = ghMirrors("https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-socks4.txt"),
+            )
+        )
+        add(
+            ProxySource(
+                name = "github/zloi-user HTTP",
+                url = "https://raw.githubusercontent.com/zloi-user/hideip.me/main/http.txt",
+                format = ProxySource.Format.PLAIN,
+                schemeHint = ProxyType.HTTP,
+                category = ProxySource.Category.B,
+                timeoutMs = ghTimeout,
+                mirrors = ghMirrors("https://raw.githubusercontent.com/zloi-user/hideip.me/main/http.txt"),
+            )
+        )
+        add(
+            ProxySource(
+                name = "github/zloi-user HTTPS",
+                url = "https://raw.githubusercontent.com/zloi-user/hideip.me/main/https.txt",
+                format = ProxySource.Format.PLAIN,
+                schemeHint = ProxyType.HTTPS,
+                category = ProxySource.Category.B,
+                timeoutMs = ghTimeout,
+                mirrors = ghMirrors("https://raw.githubusercontent.com/zloi-user/hideip.me/main/https.txt"),
+            )
+        )
+        add(
+            ProxySource(
+                name = "github/zloi-user SOCKS4",
+                url = "https://raw.githubusercontent.com/zloi-user/hideip.me/main/socks4.txt",
+                format = ProxySource.Format.PLAIN,
+                schemeHint = ProxyType.SOCKS4,
+                category = ProxySource.Category.B,
+                timeoutMs = ghTimeout,
+                mirrors = ghMirrors("https://raw.githubusercontent.com/zloi-user/hideip.me/main/socks4.txt"),
+            )
+        )
+        add(
+            ProxySource(
+                name = "github/zloi-user SOCKS5",
+                url = "https://raw.githubusercontent.com/zloi-user/hideip.me/main/socks5.txt",
+                format = ProxySource.Format.PLAIN,
+                schemeHint = ProxyType.SOCKS5,
+                category = ProxySource.Category.B,
+                timeoutMs = ghTimeout,
+                mirrors = ghMirrors("https://raw.githubusercontent.com/zloi-user/hideip.me/main/socks5.txt"),
+            )
+        )
+        add(
+            ProxySource(
+                name = "github/roosterkid HTTPS",
+                url = "https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt",
+                format = ProxySource.Format.PLAIN,
+                schemeHint = ProxyType.HTTPS,
+                category = ProxySource.Category.B,
+                timeoutMs = ghTimeout,
+                mirrors = ghMirrors("https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt"),
+            )
+        )
+        add(
+            ProxySource(
+                name = "github/roosterkid SOCKS5",
+                url = "https://raw.githubusercontent.com/roosterkid/openproxylist/main/SOCKS5_RAW.txt",
+                format = ProxySource.Format.PLAIN,
+                schemeHint = ProxyType.SOCKS5,
+                category = ProxySource.Category.B,
+                timeoutMs = ghTimeout,
+                mirrors = ghMirrors("https://raw.githubusercontent.com/roosterkid/openproxylist/main/SOCKS5_RAW.txt"),
+            )
+        )
+        add(
+            ProxySource(
+                name = "github/vakhov HTTP",
+                url = "https://raw.githubusercontent.com/vakhov/fresh-proxy-list/master/http.txt",
+                format = ProxySource.Format.PLAIN,
+                schemeHint = ProxyType.HTTP,
+                category = ProxySource.Category.B,
+                timeoutMs = ghTimeout,
+                mirrors = ghMirrors("https://raw.githubusercontent.com/vakhov/fresh-proxy-list/master/http.txt"),
+            )
+        )
+        add(
+            ProxySource(
+                name = "github/vakhov SOCKS5",
+                url = "https://raw.githubusercontent.com/vakhov/fresh-proxy-list/master/socks5.txt",
+                format = ProxySource.Format.PLAIN,
+                schemeHint = ProxyType.SOCKS5,
+                category = ProxySource.Category.B,
+                timeoutMs = ghTimeout,
+                mirrors = ghMirrors("https://raw.githubusercontent.com/vakhov/fresh-proxy-list/master/socks5.txt"),
+            )
+        )
+
+        // ============== E 类：订阅源（分享链接/Base64 → VMess/Trojan/VLESS/SS） ==============
+        // 免费公共订阅内容随时变动，抓取结果在数据源页可见（ok n:x / err）
+        add(
+            ProxySource(
+                name = "sub/Pawdroid",
+                url = "https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub",
+                format = ProxySource.Format.AUTO,
+                category = ProxySource.Category.E,
+                timeoutMs = 25_000,
+                mirrors = ghMirrors("https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub"),
+            )
+        )
+        add(
+            ProxySource(
+                name = "sub/aiboboxx",
+                url = "https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2",
+                format = ProxySource.Format.AUTO,
+                category = ProxySource.Category.E,
+                timeoutMs = 25_000,
+                mirrors = ghMirrors("https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2"),
+            )
+        )
+        add(
+            ProxySource(
+                name = "sub/mfuu",
+                url = "https://raw.githubusercontent.com/mfuu/v2ray/master/v2ray",
+                format = ProxySource.Format.AUTO,
+                category = ProxySource.Category.E,
+                timeoutMs = 25_000,
+                mirrors = ghMirrors("https://raw.githubusercontent.com/mfuu/v2ray/master/v2ray"),
+            )
+        )
+        add(
+            ProxySource(
+                name = "sub/ermaozi",
+                url = "https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt",
+                format = ProxySource.Format.AUTO,
+                category = ProxySource.Category.E,
+                timeoutMs = 25_000,
+                mirrors = ghMirrors("https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt"),
+            )
+        )
+        add(
+            ProxySource(
+                name = "sub/NoMoreWalls",
+                url = "https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.txt",
+                format = ProxySource.Format.AUTO,
+                category = ProxySource.Category.E,
+                timeoutMs = 25_000,
+                mirrors = ghMirrors("https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.txt"),
+            )
+        )
+        add(
+            ProxySource(
+                name = "sub/V2RayAggregator",
+                url = "https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt",
+                format = ProxySource.Format.AUTO,
+                category = ProxySource.Category.E,
+                timeoutMs = 25_000,
+                mirrors = ghMirrors("https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt"),
             )
         )
     }

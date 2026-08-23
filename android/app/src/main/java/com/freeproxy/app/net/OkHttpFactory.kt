@@ -66,7 +66,12 @@ object OkHttpFactory {
                 b.socketFactory(SocksProxySocketFactory(info, timeoutMs, socketProtector))
             }
             else -> {
-                val proxy = JvmProxy(JvmProxy.Type.HTTP, InetSocketAddress(info.host, info.port))
+                // 加密节点：走本机 sing-box mixed 入站（127.0.0.1:2080）
+                val proxyHost = if (info.type.isEncryptedNode)
+                    com.freeproxy.app.vpn.SingBoxManager.LOCAL_HOST else info.host
+                val proxyPort = if (info.type.isEncryptedNode)
+                    com.freeproxy.app.vpn.SingBoxManager.LOCAL_PORT else info.port
+                val proxy = JvmProxy(JvmProxy.Type.HTTP, InetSocketAddress(proxyHost, proxyPort))
                 b.proxy(proxy)
                 if (socketProtector != null) {
                     b.socketFactory(ProtectedSocketFactory(socketProtector))

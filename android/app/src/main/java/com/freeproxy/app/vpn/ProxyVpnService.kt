@@ -1,4 +1,4 @@
-﻿package com.freeproxy.app.vpn
+package com.freeproxy.app.vpn
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -151,6 +151,12 @@ class ProxyVpnService : VpnService() {
                 currentRouteMode = mode
                 val excluded = if (prefs != null) prefs.excludedApps.first() else emptySet()
 
+                // 加密节点：先启动本地 sing-box，保证 DNS/TCP 都走加密出站
+                if (proxy.type.isEncryptedNode) {
+                    val ok = SingBoxManager.ensureRunning(proxy, this@ProxyVpnService)
+                    if (!ok) throw IllegalStateException(
+                        "sing-box 启动失败: ${SingBoxManager.lastError ?: "未知错误"}")
+                }
                 val builder = Builder()
                     .setSession("Relay")
                     .addAddress(tunIp, 24)
@@ -179,6 +185,8 @@ class ProxyVpnService : VpnService() {
     }
 
     private fun stopVpn() {
+        // 停止本地 sing-box（加密节点出站）
+        runCatching { SingBoxManager.stop() }
         VpnStateManager.update {
             val keepProxy = activeProxy
             copy(status = VpnStatus.DISCONNECTING, activeProxy = keepProxy)
@@ -708,6 +716,17 @@ class ProxyVpnService : VpnService() {
         proxy: ProxyInfo, targetHost: String, targetPort: Int, timeoutMs: Int,
     ): Socket {
         val type = proxy.type
+        // 加密节点：走本地 sing-box mixed 入站（复用 HTTP CONNECT 隧道）
+        if (type.isEncryptedNode) {
+            if (!SingBoxManager.ensureRunning(proxy, this)) {
+                throw IllegalStateException(SingBoxManager.lastError ?: "sing-box 启动失败")
+            }
+            val localSock = Socket(JvmProxy.NO_PROXY)
+            protect(localSock)
+            localSock.connect(InetSocketAddress(SingBoxManager.LOCAL_HOST, SingBoxManager.LOCAL_PORT), timeoutMs)
+            httpConnectHandshake(localSock, targetHost, targetPort, null, null)
+            return localSock
+        }
         val proxyAddr = InetSocketAddress(proxy.host, proxy.port)
         return when (type) {
             com.freeproxy.app.data.model.ProxyType.SOCKS4,

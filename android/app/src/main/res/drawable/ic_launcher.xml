@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 旧系统（<API26）启动图标：蓝底圆角方块 + 白色网络节点，与 adaptive 风格呼应 -->
+<!-- Relay 旧系统（<API26）启动图标（方案B 扁平版）：深色圆角方块 + 细环 + 核心光点 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="48dp"
     android:height="48dp"
@@ -8,38 +8,20 @@
 
     <!-- 圆角方形背景 -->
     <path
-        android:fillColor="#3B5BDB"
+        android:fillColor="#0F1216"
         android:pathData="M6,0 h36 a6,6 0 0,1 6,6 v36 a6,6 0 0,1 -6,6 h-36 a6,6 0 0,1 -6,-6 v-36 a6,6 0 0,1 6,-6 z"/>
 
-    <!-- 连线（白） -->
+    <!-- 外环 -->
     <path
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="1.4"
-        android:fillColor="@android:color/transparent"
+        android:pathData="M24,16.4 a7.6,7.6 0 1,0 0,15.2 a7.6,7.6 0 1,0 0,-15.2"
+        android:strokeColor="#A7B8FF"
+        android:strokeWidth="1.6"
         android:strokeLineCap="round"
-        android:pathData="M24,15 L15,33"/>
-    <path
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="1.4"
-        android:fillColor="@android:color/transparent"
-        android:strokeLineCap="round"
-        android:pathData="M24,15 L33,33"/>
-    <path
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="1.4"
-        android:fillColor="@android:color/transparent"
-        android:strokeLineCap="round"
-        android:pathData="M15,33 L33,33"/>
+        android:fillColor="@android:color/transparent"/>
 
-    <!-- 节点（白） -->
+    <!-- 核心光点 -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M24,15 m-3.6,0 a3.6,3.6 0 1,0 7.2,0 a3.6,3.6 0 1,0 -7.2,0"/>
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M15,33 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0"/>
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M33,33 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0"/>
+        android:pathData="M24,21.3 a2.7,2.7 0 1,0 0,5.4 a2.7,2.7 0 1,0 0,-5.4"
+        android:fillColor="#E6ECFF"/>
 
 </vector>

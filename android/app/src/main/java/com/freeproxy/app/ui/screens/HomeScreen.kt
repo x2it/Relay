@@ -40,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -162,16 +163,16 @@ private data class HeaderUi(
 private fun StatusHeader(status: VpnStatus, storedCount: Int) {
     // 三层信息分工：tag=状态色彩胶囊，title=完整状态词，subtitle=仅节点数
     val ui = when (status) {
-        VpnStatus.CONNECTED -> HeaderUi(Good, "已连接",
-            "共 $storedCount 个节点", Good, "在线")
-        VpnStatus.CONNECTING -> HeaderUi(Warn, "建立隧道",
-            "共 $storedCount 个节点", Warn, "连接中")
-        VpnStatus.DISCONNECTING -> HeaderUi(Warn, "正在断开",
-            "共 $storedCount 个节点", Warn, "断开中")
-        VpnStatus.ERROR -> HeaderUi(Bad, "连接异常",
-            "查看下方日志", Bad, "异常")
-        VpnStatus.IDLE -> HeaderUi(OnSurfaceDim, "未连接",
-            "共 $storedCount 个节点", OnSurfaceDim, "待命")
+        VpnStatus.CONNECTED -> HeaderUi(Good, "TUNNEL UP",
+            "nodes: $storedCount", Good, "online")
+        VpnStatus.CONNECTING -> HeaderUi(Warn, "LINKING",
+            "nodes: $storedCount", Warn, "linking")
+        VpnStatus.DISCONNECTING -> HeaderUi(Warn, "CLOSING",
+            "nodes: $storedCount", Warn, "closing")
+        VpnStatus.ERROR -> HeaderUi(Bad, "TUNNEL ERR",
+            "查看下方日志", Bad, "error")
+        VpnStatus.IDLE -> HeaderUi(OnSurfaceDim, "TUNNEL DOWN",
+            "nodes: $storedCount", OnSurfaceDim, "idle")
     }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         // 状态栏 TAG：显式标出"隧道在线/未连接"等，用户一眼看见
@@ -192,9 +193,10 @@ private fun StatusHeader(status: VpnStatus, storedCount: Int) {
             Text(
                 ui.tagText,
                 color = ui.tagColor,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 12.sp,
-                letterSpacing = 0.3.sp,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                letterSpacing = 1.sp,
+                fontFamily = FontFamily.Monospace,
             )
         }
         Spacer(Modifier.height(18.dp))
@@ -203,12 +205,15 @@ private fun StatusHeader(status: VpnStatus, storedCount: Int) {
             style = MaterialTheme.typography.headlineMedium,
             color = OnSurface,
             fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace,
+            letterSpacing = 1.sp,
         )
         Spacer(Modifier.height(8.dp))
         Text(
             ui.subtitle,
             style = MaterialTheme.typography.bodySmall,
             color = OnSurfaceDim,
+            fontFamily = FontFamily.Monospace,
         )
     }
 }
@@ -263,24 +268,28 @@ private fun ConnectButton(status: VpnStatus, onClick: () -> Unit) {
                         )
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            if (s == VpnStatus.CONNECTING) "连接中" else "断开中",
-                            color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium
+                            if (s == VpnStatus.CONNECTING) "linking..." else "closing...",
+                            color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                            fontFamily = FontFamily.Monospace,
                         )
                     }
                     VpnStatus.CONNECTED -> {
                         IconRes(id = R.drawable.ic_link, tint = Color.White, size = 38.dp)
                         Spacer(Modifier.height(8.dp))
-                        Text("点击断开", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text("[ 断开 ]", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace)
                     }
                     VpnStatus.ERROR -> {
                         IconRes(id = R.drawable.ic_power, tint = Color.White, size = 38.dp)
                         Spacer(Modifier.height(8.dp))
-                        Text("重试", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text("[ 重试 ]", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace)
                     }
                     VpnStatus.IDLE -> {
                         IconRes(id = R.drawable.ic_power, tint = Color.White, size = 38.dp)
                         Spacer(Modifier.height(8.dp))
-                        Text("点击连接", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text("[ 连接 ]", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace)
                     }
                 }
             }
@@ -420,7 +429,7 @@ private fun StatsRow(sessionStart: Long?, bytesIn: Long, bytesOut: Long, rateIn:
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
-        StatCell(label = "时长", value = duration)
+        StatCell(label = "uptime", value = duration)
         StatDivider()
         StatCell(label = "↓ " + humanBytes(bytesIn), value = humanBytes(rateIn) + "/s", color = Seed)
         StatDivider()
@@ -497,8 +506,9 @@ private fun LogEntry(
             Box(Modifier.size(5.dp).clip(CircleShape).background(Good))
             Spacer(Modifier.width(8.dp))
             Text(
-                "进程日志",
+                "> proc log",
                 color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace,
             )
             Spacer(Modifier.weight(1f))
             Text(

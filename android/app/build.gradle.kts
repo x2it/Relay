@@ -13,15 +13,21 @@ android {
         applicationId = "com.freeproxy.app"
         minSdk = 24
         targetSdk = 33
-        versionCode = 12
-        versionName = "1.2.0"
+        versionCode = 17
+        versionName = "1.4.1"
         vectorDrawables { useSupportLibrary = true }
+
+        // sing-box 原生库只保留 arm64（现代安卓手机），APK 体积大幅下降
+        ndk { abiFilters += listOf("arm64-v8a") }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // 复用 debug 签名：免 keystore 配置，且可覆盖安装已装版本（保数据）
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
@@ -41,6 +47,8 @@ android {
 
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        // 压缩打包 .so（默认不压缩存储约 32MB → 压缩后约 15MB）
+        jniLibs { useLegacyPackaging = true }
     }
 }
 
@@ -83,6 +91,16 @@ dependencies {
 
     // DocumentFile (导入导出用)
     implementation("androidx.documentfile:documentfile:1.0.1")
+
+    // sing-box 核心（libbox，加密节点 VMess/Trojan/VLESS/SS 出站）
+    implementation(files("libs/libbox.aar"))
+
+    // CameraX + ML Kit：内置扫码添加节点
+    implementation("androidx.camera:camera-core:1.3.1")
+    implementation("androidx.camera:camera-camera2:1.3.1")
+    implementation("androidx.camera:camera-lifecycle:1.3.1")
+    implementation("androidx.camera:camera-view:1.3.1")
+    implementation("com.google.mlkit:barcode-scanning:17.2.0")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

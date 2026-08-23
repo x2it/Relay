@@ -3,10 +3,14 @@ package com.freeproxy.app.data
 import android.content.Context
 import com.freeproxy.app.data.db.AppDatabase
 import com.freeproxy.app.data.db.ProxyDao
+import com.freeproxy.app.data.db.SourceDao
 import com.freeproxy.app.data.model.AnonymityLevel
 import com.freeproxy.app.data.model.ProxyInfo
+import com.freeproxy.app.data.model.ProxySourceEntity
 import com.freeproxy.app.data.model.ProxyType
 import com.freeproxy.app.data.model.SpeedLevel
+import com.freeproxy.app.discover.BuiltinSources
+import com.freeproxy.app.discover.ProxySource
 import com.freeproxy.app.net.ValResult
 import kotlinx.coroutines.flow.Flow
 
@@ -15,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
  */
 class ProxyRepository(ctx: Context) {
     private val dao: ProxyDao = AppDatabase.get(ctx).proxyDao()
+    private val sourceDao: SourceDao = AppDatabase.get(ctx).sourceDao()
 
     fun observeAll(): Flow<List<ProxyInfo>> = dao.observeAll()
 
@@ -112,4 +117,60 @@ class ProxyRepository(ctx: Context) {
         host: String? = null,
         speed: SpeedLevel? = null,
     ): Flow<List<ProxyInfo>> = dao.filter(type, anon, country, host, speed)
+
+    // ========================================================================
+    // 数据源：内置 + 自定义统一入库（proxy_sources 表）
+    // ========================================================================
+
+    fun observeCustomSources(): Flow<List<ProxySourceEntity>> = sourceDao.observeAll()
+
+    suspend fun customSources(): List<ProxySourceEntity> = sourceDao.getAll()
+
+    /** 内置 + 自定义合并（自定义优先，同 URL 覆盖内置） */
+    suspend fun allSources(): List<ProxySource> {
+        val custom = sourceDao.getAll().map { it.toSource() }
+        val customUrls = custom.map { it.url }.toHashSet()
+        return custom + BuiltinSources.default.filterNot { it.url in customUrls }
+    }
+
+    suspend fun addSourceEntity(e: ProxySourceEntity): Long = sourceDao.insert(e)
+    suspend fun updateSourceEntity(e: ProxySourceEntity) = sourceDao.update(e)
+    suspend fun deleteSourceEntity(e: ProxySourceEntity) = sourceDao.delete(e)
+    suspend fun setSourceEnabled(id: Long, enabled: Boolean) = sourceDao.setEnabled(id, enabled)
+
+    /** 抓取后回写源状态（OK/ERR + 条数），数据源页可视化 */
+    suspend fun setSourceStatus(url: String, ok: Boolean, count: Int) {
+        sourceDao.setStatus(
+            url = url,
+            status = if (ok) "OK" else "ERR",
+            count = count,
+            fetchedAt = System.currentTimeMillis(),
+        )
+    }
+
+    /** 补齐缺失的内置源（保留用户已改/已停用项，仅恢复被删的） */
+    suspend fun restoreBuiltinSources(): Int {
+        var added = 0
+        for (src in com.freeproxy.app.discover.BuiltinSources.default) {
+            if (sourceDao.getByUrl(src.url) == null) {
+                sourceDao.insert(ProxySourceEntity.fromSource(src))
+                added++
+            }
+        }
+        return added
+    }
+
+    /**
+     * 首次启动种子化：把内置源写入库（url 冲突忽略，保留用户已改/已删后的现状）。
+     * 返回本次新增条数。
+     */
+    suspend fun seedBuiltinSourcesIfEmpty(): Int {
+        if (sourceDao.count() > 0) return 0
+        var added = 0
+        for (s in BuiltinSources.default) {
+            val id = sourceDao.insert(ProxySourceEntity.fromSource(s))
+            if (id > 0) added++
+        }
+        return added
+    }
 }
