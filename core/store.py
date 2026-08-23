@@ -18,7 +18,7 @@ def _now() -> str:
 
 def new_proxy(ip: str, port: int, protocol: str = "http",
               country: str = "", source: str = "",
-              anonymity: str = "") -> Dict:
+              anonymity: str = "", config: Optional[Dict] = None) -> Dict:
     """构造一个统一的代理数据结构。"""
     return {
         "ip": ip.strip(),
@@ -27,6 +27,7 @@ def new_proxy(ip: str, port: int, protocol: str = "http",
         "country": country,
         "source": source,
         "anonymity": anonymity,
+        "config": config or {},      # 加密协议专属参数（method/password/id/sni 等）
         "alive": False,
         "latency_ms": 0,
         "speed_kbps": 0.0,
@@ -55,11 +56,20 @@ def save_proxies(proxies: List[Dict]) -> None:
 
 
 def merge_proxies(existing: List[Dict], new_items: List[Dict]) -> tuple:
-    """合并去重，返回 (合并后列表, 新增数量)。"""
-    seen = {(p["ip"], p["port"], p["protocol"]): i for i, p in enumerate(existing)}
+    """合并去重，返回 (合并后列表, 新增数量)。
+
+    加密协议按 (ip, port, protocol, config) 去重，避免同主机不同密钥被误并。
+    """
+    def key_of(p):
+        if p.get("protocol") in ("ss", "vmess", "vless", "trojan"):
+            return (p["ip"], p["port"], p["protocol"],
+                    json.dumps(p.get("config") or {}, sort_keys=True, ensure_ascii=False))
+        return (p["ip"], p["port"], p["protocol"])
+
+    seen = {key_of(p): i for i, p in enumerate(existing)}
     added = 0
     for item in new_items:
-        key = (item["ip"], item["port"], item["protocol"])
+        key = key_of(item)
         if key not in seen:
             existing.append(item)
             seen[key] = len(existing) - 1
@@ -138,14 +148,19 @@ def export_csv(proxies: List[Dict], path: str) -> None:
 
 
 def export_txt(proxies: List[Dict], path: str) -> None:
-    """ip:port 形式（按协议分块）。"""
+    """按协议分块导出。普通代理为 ip:port；加密代理导出分享链接。"""
+    from core.protocols.links import to_share_link
     lines = []
-    for proto in ["http", "https", "socks5"]:
+    for proto in ["http", "https", "socks5", "ss", "vmess", "vless", "trojan"]:
         items = [p for p in proxies if p["protocol"] == proto]
         if items:
             lines.append(f"# {proto}")
             for p in items:
-                lines.append(f"{p['ip']}:{p['port']}")
+                if proto in ("ss", "vmess", "vless", "trojan"):
+                    link = to_share_link(p)
+                    lines.append(link or f"{p['ip']}:{p['port']}")
+                else:
+                    lines.append(f"{p['ip']}:{p['port']}")
             lines.append("")
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
@@ -157,7 +172,7 @@ def alive_proxies(proxies: List[Dict]) -> List[Dict]:
 
 
 def import_file(path: str) -> List[Dict]:
-    """自动识别 json/csv/txt 导入。"""
+    """自动识别 json/csv/txt 导入。txt 支持 ip:port 与 ss://vmess:// 等分享链接。"""
     ext = os.path.splitext(path)[1].lower()
     if ext == ".json":
         with open(path, "r", encoding="utf-8") as f:
@@ -171,6 +186,7 @@ def import_file(path: str) -> List[Dict]:
                     d.get("country", ""),
                     d.get("source", "import"),
                     d.get("anonymity", ""),
+                    d.get("config"),
                 )
                 # 保留验证字段
                 p["alive"] = d.get("alive", False)
@@ -206,7 +222,8 @@ def import_file(path: str) -> List[Dict]:
                 except Exception:
                     continue
         return items
-    # 当作 txt: 每行 ip:port，可选协议前缀
+    # 当作 txt: 每行 ip:port 或分享链接，可选协议前缀
+    from core.protocols.links import parse_link
     items = []
     cur_proto = "http"
     with open(path, "r", encoding="utf-8") as f:
@@ -216,10 +233,14 @@ def import_file(path: str) -> List[Dict]:
                 continue
             if line.startswith("#"):
                 tag = line[1:].strip().lower()
-                if tag in ("http", "https", "socks5"):
+                if tag in ("http", "https", "socks5", "ss", "vmess", "vless", "trojan"):
                     cur_proto = tag
                 continue
             if "://" in line:
+                node = parse_link(line)
+                if node:
+                    items.append(node)
+                    continue
                 proto, rest = line.split("://", 1)
                 cur_proto = proto.lower()
                 line = rest

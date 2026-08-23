@@ -5,7 +5,7 @@ import sys
 
 # 应用基础信息
 APP_NAME = "LiteProxy"
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.6.0"
 
 # 数据目录：打包后放在 exe 同级，绿色版可携带
 if getattr(sys, "frozen", False):

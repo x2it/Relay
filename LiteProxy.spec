@@ -5,7 +5,8 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('config.py', '.'), ('core', 'core'), ('ui', 'ui'), ('data', 'data')],
+    datas=[('config.py', '.'), ('core', 'core'), ('ui', 'ui'), ('data', 'data'),
+           ('assets/LiteProxy.ico', 'assets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -35,4 +36,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='assets/LiteProxy.ico',
 )

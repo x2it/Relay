@@ -8,7 +8,9 @@
 - HTTPS请求：客户端发 CONNECT，本地代理让上游代理建立 TCP 隧道，
   之后两端双向转发原始字节——流量由目标站点 TLS 端到端加密，
   上游代理和本地代理都看不到明文，即"加密访问"。
-- 上游代理可选 http / socks5 协议；当前代理失败可自动切换。
+- 上游代理可选 http / https / socks5 / ss / vmess / vless / trojan；
+  其中加密协议（ss/vmess/vless/trojan）通过统一入口 connect_proxy 建立
+  直达目标站点的加密隧道，当前代理失败可自动切换。
 - 可选 Token 鉴权：防止局域网他人蹭用本地端口。
 """
 import socket
@@ -22,6 +24,7 @@ from typing import List, Dict, Optional, Callable
 
 from config import (DEFAULT_LOCAL_HOST, DEFAULT_LOCAL_PORT,
                     PROXY_MODE_GLOBAL, PROXY_MODE_SMART, PROXY_MODE_DIRECT)
+from core.protocols import connect_proxy, TUNNEL_PROTOCOLS, ENCRYPTED_PROTOCOLS
 
 
 # ---------- Windows 系统代理管理（两阶段提交 + 必达恢复） ----------
@@ -403,13 +406,21 @@ class ProxyRotator:
 # ---------- 隧道双向转发 ----------
 
 def _pipe(a: socket.socket, b: socket.socket):
+    """双向转发。a/b 可为裸 socket 或 TunnelStream（都实现 fileno/recv/sendall）。
+
+    TunnelStream.recv 在"暂无数据但未结束"时抛 socket.timeout，
+    此处按"继续等待"处理，不中断管道。
+    """
     try:
         while True:
             r, _, _ = select.select([a, b], [], [], 60)
             if not r:
                 continue
             for s in r:
-                data = s.recv(8192)
+                try:
+                    data = s.recv(8192)
+                except socket.timeout:
+                    continue
                 if not data:
                     return
                 if s is a:
@@ -597,19 +608,9 @@ class LocalProxyServer:
             # 智能分流判断
             is_direct = (self.rule_engine.decide(host) == "direct")
 
-            # 直连模式：需要把绝对URI改成相对路径再发送
-            if is_direct and "://" in target:
-                from urllib.parse import urlsplit
-                u = urlsplit(target)
-                rel = u.path or "/"
-                if u.query:
-                    rel += "?" + u.query
-                first_line = head_line.split(" ", 2)
-                first_line[1] = rel
-                new_head_line = " ".join(first_line)
-                first = (new_head_line + "\r\n").encode("latin-1") + first.split(b"\r\n", 1)[1]
-
+            # 直连模式：需把绝对 URI 改成相对路径再发送
             if is_direct:
+                first = self._to_relative_first(first, head_line, target)
                 up_sock = self._connect_direct(host, port)
                 if not up_sock:
                     client.sendall(b"HTTP/1.1 502 Direct Connect Failed\r\n\r\n")
@@ -620,40 +621,26 @@ class LocalProxyServer:
                 self.stats["direct"] += 1
                 _pipe(client, up_sock)
                 return
-            # 走代理模式
+            # 走代理模式：隧道类协议需转相对路径；失败自动切换重试
+            max_retries = 5
+            tried = set()
             upstream = self.rotator.pick()
-            if not upstream:
-                client.sendall(b"HTTP/1.1 502 No Available Upstream\r\n\r\n")
-                self.stats["fail"] += 1
-                return
-            # SOCKS5 代理：隧道已连到目标，需转相对路径
-            if upstream.get("protocol") == "socks5" and "://" in target:
-                from urllib.parse import urlsplit
-                u = urlsplit(target)
-                rel = u.path or "/"
-                if u.query:
-                    rel += "?" + u.query
-                first_line = head_line.split(" ", 2)
-                first_line[1] = rel
-                new_head_line = " ".join(first_line)
-                first = (new_head_line + "\r\n").encode("latin-1") + first.split(b"\r\n", 1)[1]
-            up_sock = self._connect_upstream(upstream, host, port)
-            if not up_sock:
+            up_sock = None
+            for attempt in range(max_retries):
+                if not upstream:
+                    break
+                key = f"{upstream.get('ip','')}:{upstream.get('port','')}:{upstream.get('protocol','')}"
+                if key in tried:
+                    upstream = self.rotator.rotate()
+                    continue
+                tried.add(key)
+                if upstream.get("protocol") in TUNNEL_PROTOCOLS:
+                    first = self._to_relative_first(first, head_line, target)
+                up_sock = self._connect_upstream(upstream, host, port)
+                if up_sock:
+                    break
                 self.rotator.report_fail(upstream)
                 upstream = self.rotator.rotate()
-                if upstream:
-                    # 重试时如果换了 SOCKS5，需再次处理 URI
-                    if upstream.get("protocol") == "socks5" and "://" in target:
-                        from urllib.parse import urlsplit
-                        u = urlsplit(target)
-                        rel = u.path or "/"
-                        if u.query:
-                            rel += "?" + u.query
-                        first_line = head_line.split(" ", 2)
-                        first_line[1] = rel
-                        new_head_line = " ".join(first_line)
-                        first = (new_head_line + "\r\n").encode("latin-1") + first.split(b"\r\n", 1)[1]
-                    up_sock = self._connect_upstream(upstream, host, port)
             if not up_sock:
                 client.sendall(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
                 self.stats["fail"] += 1
@@ -685,18 +672,24 @@ class LocalProxyServer:
             return None
 
     def _connect_upstream(self, upstream: Dict, host: str, port: int):
+        """普通 HTTP 请求：连接上游并（对隧道类协议）直连到目标 host:port。"""
         proto = upstream.get("protocol", "http")
-        try:
-            s = socket.create_connection((upstream["ip"], upstream["port"]),
-                                         timeout=10)
-            s.settimeout(30)
-        except Exception:
-            return None
         if proto in ("http", "https"):
-            # HTTP 上游代理：直接连接到上游代理 socket 即可，
-            # 请求行使用绝对 URI 或 CONNECT。
-            return s
+            # HTTP 上游代理：返回连到上游代理的 socket，请求行使用绝对 URI。
+            try:
+                s = socket.create_connection((upstream["ip"], upstream["port"]),
+                                             timeout=10)
+                s.settimeout(30)
+                return s
+            except Exception:
+                return None
         if proto == "socks5":
+            try:
+                s = socket.create_connection((upstream["ip"], upstream["port"]),
+                                             timeout=10)
+                s.settimeout(30)
+            except Exception:
+                return None
             if _socks5_connect(s, host, port):
                 return s
             try:
@@ -704,23 +697,24 @@ class LocalProxyServer:
             except Exception:
                 pass
             return None
-        try:
-            s.close()
-        except Exception:
-            pass
+        if proto in ENCRYPTED_PROTOCOLS:
+            try:
+                return connect_proxy(upstream, host, port, timeout=15)
+            except Exception:
+                return None
         return None
 
     def _open_upstream_tunnel(self, upstream: Dict, host: str, port: int):
-        """HTTPS CONNECT：通过上游建立隧道。返回上游 socket 或 None。"""
+        """HTTPS CONNECT：通过上游建立隧道，返回上游 socket 或 TunnelStream。"""
         proto = upstream.get("protocol", "http")
-        try:
-            s = socket.create_connection((upstream["ip"], upstream["port"]),
-                                         timeout=15)
-            s.settimeout(30)
-        except Exception:
-            return None
         if proto in ("http", "https"):
             # 发 CONNECT 给上游代理
+            try:
+                s = socket.create_connection((upstream["ip"], upstream["port"]),
+                                             timeout=15)
+                s.settimeout(30)
+            except Exception:
+                return None
             req = (f"CONNECT {host}:{port} HTTP/1.1\r\n"
                    f"Host: {host}:{port}\r\n\r\n").encode("latin-1")
             try:
@@ -757,6 +751,12 @@ class LocalProxyServer:
                 pass
             return None
         if proto == "socks5":
+            try:
+                s = socket.create_connection((upstream["ip"], upstream["port"]),
+                                             timeout=15)
+                s.settimeout(30)
+            except Exception:
+                return None
             if _socks5_connect(s, host, port):
                 return s
             try:
@@ -764,11 +764,28 @@ class LocalProxyServer:
             except Exception:
                 pass
             return None
-        try:
-            s.close()
-        except Exception:
-            pass
+        if proto in ENCRYPTED_PROTOCOLS:
+            # 加密协议本身即"到目标"的隧道，直接建立即可
+            try:
+                return connect_proxy(upstream, host, port, timeout=15)
+            except Exception:
+                return None
         return None
+
+    @staticmethod
+    def _to_relative_first(first: bytes, head_line: str, target: str) -> bytes:
+        """隧道类协议已直达目标站点，需把绝对 URI 改为相对路径再发送。"""
+        from urllib.parse import urlsplit
+        if "://" not in target:
+            return first
+        u = urlsplit(target)
+        rel = u.path or "/"
+        if u.query:
+            rel += "?" + u.query
+        fl = head_line.split(" ", 2)
+        fl[1] = rel
+        new_head = " ".join(fl)
+        return (new_head + "\r\n").encode("latin-1") + first.split(b"\r\n", 1)[1]
 
     # ----- 生命周期 -----
     def start(self):

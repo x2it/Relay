@@ -375,3 +375,71 @@ class RulesDialog(tk.Toplevel):
 
     def _cancel(self):
         self.destroy()
+
+
+class SubscriptionDialog(tk.Toplevel):
+    """订阅导入：支持订阅地址抓取，或直接粘贴分享链接 / Base64 订阅内容。"""
+    def __init__(self, master):
+        super().__init__(master)
+        self.title("订阅导入")
+        self.configure(bg=COLOR_BG)
+        self.result = None
+        self.resizable(False, False)
+        self.transient(master)
+        self.grab_set()
+
+        body = tk.Frame(self, bg=COLOR_BG, padx=24, pady=22)
+        body.pack(fill="both", expand=True)
+
+        tk.Label(body, text="订阅导入", bg=COLOR_BG, fg=COLOR_TEXT,
+                 font=(FONT_FAMILY, 13, "bold")).pack(anchor="w", pady=(0, 4))
+        tk.Label(body, text="支持 Shadowsocks / VMess / VLess / Trojan 等加密节点",
+                 bg=COLOR_BG, fg=COLOR_TEXT_MUTED,
+                 font=(FONT_FAMILY, FONT_SIZE - 1)).pack(anchor="w", pady=(0, 16))
+
+        tk.Label(body, text="订阅地址（每行一个，将自动从远程抓取）",
+                 bg=COLOR_BG, fg=COLOR_TEXT_MUTED,
+                 font=(FONT_FAMILY, FONT_SIZE)).pack(anchor="w", pady=(0, 6))
+        url_wrap = tk.Frame(body, bg=COLOR_CARD, highlightbackground=COLOR_BORDER,
+                            highlightthickness=1)
+        url_wrap.pack(fill="x")
+        self.txt_urls = tk.Text(url_wrap, height=4, bg=COLOR_CARD, fg=COLOR_TEXT,
+                                font=(FONT_FAMILY, FONT_SIZE), relief="flat",
+                                padx=10, pady=8, wrap="word")
+        self.txt_urls.pack(fill="x")
+
+        tk.Label(body, text="或直接粘贴分享链接 / Base64 订阅内容",
+                 bg=COLOR_BG, fg=COLOR_TEXT_MUTED,
+                 font=(FONT_FAMILY, FONT_SIZE)).pack(anchor="w", pady=(14, 6))
+        text_wrap = tk.Frame(body, bg=COLOR_CARD, highlightbackground=COLOR_BORDER,
+                             highlightthickness=1)
+        text_wrap.pack(fill="both", expand=True)
+        self.txt_nodes = tk.Text(text_wrap, height=8, bg=COLOR_CARD, fg=COLOR_TEXT,
+                                 font=(FONT_FAMILY, FONT_SIZE), relief="flat",
+                                 padx=10, pady=8, wrap="word")
+        self.txt_nodes.pack(side="left", fill="both", expand=True)
+        vsb = ttk.Scrollbar(text_wrap, orient="vertical", command=self.txt_nodes.yview)
+        self.txt_nodes.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+
+        btns = tk.Frame(body, bg=COLOR_BG)
+        btns.pack(fill="x", pady=(18, 0))
+        RoundedButton(btns, "取消", command=self._cancel, kind="ghost").pack(side="right", padx=(8, 0))
+        RoundedButton(btns, "导入", command=self._save).pack(side="right")
+
+        self.geometry("520x520")
+        self.update_idletasks()
+        self.geometry(f"+{master.winfo_rootx()+80}+{master.winfo_rooty()+60}")
+
+    def _save(self):
+        urls = [u.strip() for u in self.txt_urls.get("1.0", "end").splitlines()
+                if u.strip()]
+        text = self.txt_nodes.get("1.0", "end").strip()
+        if not urls and not text:
+            messagebox.showerror("错误", "请输入订阅地址或粘贴订阅内容", parent=self)
+            return
+        self.result = (urls, text)
+        self.destroy()
+
+    def _cancel(self):
+        self.destroy()

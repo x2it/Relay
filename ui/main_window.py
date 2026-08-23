@@ -13,9 +13,10 @@ from config import (APP_NAME, APP_VERSION, COLOR_BG, COLOR_CARD, COLOR_BAR,
                     COLOR_ROW_HOVER, FONT_FAMILY, FONT_SIZE,
                     DEFAULT_LOCAL_HOST, DEFAULT_LOCAL_PORT)
 from ui.style import apply_style, RoundedButton, StatusBar, Card, Icon
-from ui.dialogs import SettingsDialog, SourcesDialog
+from ui.dialogs import SettingsDialog, SourcesDialog, SubscriptionDialog
 from core import store, fetcher, checker
 from core.local_proxy import LocalProxyServer, ProxyRotator, SystemProxyManager
+from core.protocols import ALL_PROTOCOLS, PROTOCOL_LABELS, ENCRYPTED_PROTOCOLS, parse_subscription
 
 
 COLUMNS = ("idx", "status_dot", "ip", "port", "protocol", "https", "country", "anonymity",
@@ -125,7 +126,7 @@ class MainWindow:
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left")
 
         # 紧急恢复（始终可见，小而醒目）
-        RoundedButton(top, "🚨 紧急恢复网络", command=self._on_emergency_restore,
+        RoundedButton(top, f"{Icon.ALARM} 紧急恢复网络", command=self._on_emergency_restore,
                       kind="danger").pack(side="right", padx=(6, 14), pady=12)
 
         RoundedButton(top, f"{Icon.SOURCE} 抓取源", command=self._open_sources,
@@ -169,18 +170,20 @@ class MainWindow:
         self._vsep(row1)
         self.btn_toggle = RoundedButton(row1, f"{Icon.START} 启动本地代理", command=self._on_toggle_server)
         self.btn_toggle.pack(side="left", padx=6)
-        RoundedButton(row1, "🔬 诊断", command=self._open_diagnostic, kind="ghost").pack(side="left", padx=6)
+        RoundedButton(row1, "诊断", command=self._open_diagnostic, kind="ghost").pack(side="left", padx=6)
 
         # 第二行：数据管理 + 系统代理
         row2 = tk.Frame(tb, bg=COLOR_CARD)
         row2.pack(fill="x", pady=(10, 0))
         RoundedButton(row2, f"{Icon.IMPORT} 导入", command=self._on_import, kind="ghost").pack(side="left", padx=(0, 6))
         RoundedButton(row2, f"{Icon.EXPORT} 导出", command=self._on_export, kind="ghost").pack(side="left", padx=6)
+        RoundedButton(row2, f"{Icon.SUBSCRIBE} 订阅导入", command=self._on_import_subscription,
+                      kind="ghost").pack(side="left", padx=6)
         self._vsep(row2)
         RoundedButton(row2, f"{Icon.CLEAR} 清空不可用", command=self._on_clear_dead, kind="ghost").pack(side="left", padx=6)
         RoundedButton(row2, f"{Icon.DELETE} 删除选中", command=self._on_delete, kind="danger").pack(side="left", padx=6)
         # 系统代理开关（右对齐，独立分组）
-        self.btn_sys_proxy = RoundedButton(row2, "🖥 系统代理:关", command=self._on_toggle_system_proxy, kind="soft")
+        self.btn_sys_proxy = RoundedButton(row2, f"系统代理：关", command=self._on_toggle_system_proxy, kind="soft")
         self.btn_sys_proxy.pack(side="right", padx=(6, 0))
 
         # 进程可视化行
@@ -215,8 +218,9 @@ class MainWindow:
         tk.Label(filt, text="协议", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left")
         self.proto_var = tk.StringVar(value="全部")
-        cb_proto = ttk.Combobox(filt, textvariable=self.proto_var, width=8, state="readonly",
-                                values=["全部", "http", "socks5"])
+        proto_choices = ["全部"] + [PROTOCOL_LABELS.get(k, k) for k in ALL_PROTOCOLS]
+        cb_proto = ttk.Combobox(filt, textvariable=self.proto_var, width=13, state="readonly",
+                                values=proto_choices)
         cb_proto.pack(side="left", padx=(4, 12))
         cb_proto.bind("<<ComboboxSelected>>", lambda e: self._refresh_table())
 
@@ -224,7 +228,7 @@ class MainWindow:
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left")
         self.https_var = tk.StringVar(value="全部")
         cb_https = ttk.Combobox(filt, textvariable=self.https_var, width=8, state="readonly",
-                                values=["全部", "仅HTTPS", "仅HTTP"])
+                                values=["全部", "仅 HTTPS", "仅 HTTP"])
         cb_https.pack(side="left", padx=(4, 12))
         cb_https.bind("<<ComboboxSelected>>", lambda e: self._refresh_table())
 
@@ -307,8 +311,8 @@ class MainWindow:
                             activebackground=COLOR_PRIMARY, activeforeground="#ffffff",
                             bd=0, relief="flat", font=(FONT_FAMILY, FONT_SIZE),
                             borderwidth=0, selectcolor=COLOR_PRIMARY)
-        self.menu.add_command(label="🔒 锁定此代理", command=self._lock_selected)
-        self.menu.add_command(label="🔓 解除锁定", command=self._unlock)
+        self.menu.add_command(label="锁定此代理", command=self._lock_selected)
+        self.menu.add_command(label="解除锁定", command=self._unlock)
         self.menu.add_command(label=f"{Icon.PIN} 设为当前上游", command=self._set_current_upstream)
         self.menu.add_command(label=f"{Icon.CHECK} 单独验证", command=self._on_check_selected)
         self.menu.add_command(label=f"{Icon.COPY} 复制 ip:port", command=self._copy_selected)
@@ -373,12 +377,18 @@ class MainWindow:
         for i, p in enumerate(self.proxies):
             if kw and kw not in (p["ip"] + " " + p.get("country", "") + " " + p.get("source", "")).lower():
                 continue
-            if proto != "全部" and p["protocol"] != proto:
-                continue
-            if https_sel == "仅HTTPS" and not p.get("https_ok"):
-                continue
-            if https_sel == "仅HTTP" and p.get("https_ok"):
-                continue
+            if proto != "全部":
+                proto_key = next((k for k, v in PROTOCOL_LABELS.items() if v == proto), proto)
+                if p["protocol"] != proto_key:
+                    continue
+            if https_sel == "仅 HTTPS":
+                proto = p.get("protocol", "http")
+                if proto not in ENCRYPTED_PROTOCOLS and not p.get("https_ok"):
+                    continue
+            if https_sel == "仅 HTTP":
+                proto = p.get("protocol", "http")
+                if proto in ENCRYPTED_PROTOCOLS or p.get("https_ok"):
+                    continue
             txt = _status_text(p)
             if st == "可用" and txt != "可用":
                 continue
@@ -439,9 +449,14 @@ class MainWindow:
             if n % 2 == 1:
                 tags.append("alt")
             dot = _dot_char(p)
-            https_mark = "✓" if p.get("https_ok") else ""
+            proto = p.get("protocol", "http")
+            if proto in ENCRYPTED_PROTOCOLS or p.get("https_ok"):
+                https_mark = "✓"
+            else:
+                https_mark = ""
             self.tree.insert("", "end", iid=str(i), values=(
-                n + 1, dot, p["ip"], p["port"], p["protocol"], https_mark,
+                n + 1, dot, p["ip"], p["port"],
+                PROTOCOL_LABELS.get(p["protocol"], p["protocol"]), https_mark,
                 p.get("country", ""),
                 p.get("anonymity", ""), _latency_text(p), _speed_text(p),
                 p.get("source", ""), p.get("last_check", ""),
@@ -776,7 +791,8 @@ class MainWindow:
         self.root.after(200, lambda: self._run_diagnostic(dlg, run_btn, tip))
 
     def _run_diagnostic(self, dlg, btn, tip_lbl):
-        btn.configure(text="诊断中…", state="disabled")
+        btn.set_text("诊断中…")
+        btn.configure_state("disabled")
         tip_lbl.configure(text="")
         log = dlg._log
         log.configure(state="normal"); log.delete("1.0", "end"); log.configure(state="disabled")
@@ -842,12 +858,14 @@ class MainWindow:
             w(f"无法直接连 8.8.8.8:53（{e}）· 本机外网可能受限，必须靠代理")
 
         write("")
-        write("【4 / 5】用当前上游代理尝试访问 Google (HTTP CONNECT)", "h")
+        write("【4 / 5】用当前上游代理尝试访问 Google", "h")
         cur = self.rotator.pick() if self.rotator.current() is None else self.rotator.current()
         if not cur:
             bad("无上游代理可测")
         else:
-            write(f"  目标：{cur['ip']}:{cur['port']} ({cur['protocol']})")
+            from core.protocols import PROTOCOL_LABELS
+            proto_lbl = PROTOCOL_LABELS.get(cur.get("protocol", "http"), cur.get("protocol", "http"))
+            write(f"  目标：{cur['ip']}:{cur['port']} ({proto_lbl})")
             # 复用 LocalProxyServer 的建立隧道逻辑
             from core.local_proxy import LocalProxyServer
             fake_rotator = self.rotator
@@ -858,7 +876,7 @@ class MainWindow:
             try:
                 if proto in ("http", "https"):
                     tunnel = probe._open_upstream_tunnel(cur, "www.google.com", 443)
-                else:  # socks5
+                elif proto == "socks5":
                     s = socket.create_connection((cur["ip"], cur["port"]), timeout=12)
                     s.settimeout(15)
                     from core.local_proxy import _socks5_connect
@@ -866,6 +884,9 @@ class MainWindow:
                         tunnel = s
                     else:
                         s.close()
+                else:  # 加密协议 ss/vmess/vless/trojan
+                    from core.protocols import connect_proxy
+                    tunnel = connect_proxy(cur, "www.google.com", 443, timeout=12)
                 elapsed = int((time.time() - start) * 1000)
                 if tunnel:
                     # 发一个 GET 看能不能拿到响应
@@ -883,7 +904,7 @@ class MainWindow:
                             pass
                         tunnel.close()
                         if buf and b"204" in buf.split(b"\r\n", 1)[0]:
-                            ok(f"✅ 成功建立隧道并拿到 Google 204 · 用时 {elapsed}ms")
+                            ok(f"{Icon.OK_MARK} 成功建立隧道并拿到 Google 204 · 用时 {elapsed}ms")
                         elif buf:
                             head_line = buf.split(b'\r\n', 1)[0][:80]
                             ok(f"隧道建立成功，拿到响应（{len(buf)}B，首行{head_line}） · {elapsed}ms")
@@ -942,7 +963,8 @@ class MainWindow:
         write("  ④ 浏览器代理设为 127.0.0.1:8888（HTTP 和 HTTPS 都要）", "warn")
         write("  ⑤ 如仍不通，重新抓取验证（免费代理易失效）", "warn")
 
-        btn.configure(text="▶ 重新诊断", state="normal")
+        btn.set_text("▶ 重新诊断")
+        btn.configure_state("normal")
         tip_lbl.configure(text="诊断完成")
 
     # ---------------- 本地代理服务器 ----------------
@@ -1025,13 +1047,13 @@ class MainWindow:
 
     def _update_sys_proxy_btn(self):
         if self.sys_proxy_mgr.is_applied:
-            self.btn_sys_proxy.set_text("🖥 系统代理:开")
+            self.btn_sys_proxy.set_text("系统代理：开")
             self.btn_sys_proxy.kind = "danger"
             self.btn_sys_proxy._fill = "#e5484d"
             self.btn_sys_proxy._fill_hover = "#c93a3f"
             self.btn_sys_proxy.itemconfigure(self.btn_sys_proxy._shape, fill="#e5484d")
         else:
-            self.btn_sys_proxy.set_text("🖥 系统代理:关")
+            self.btn_sys_proxy.set_text("系统代理：关")
             self.btn_sys_proxy.kind = "soft"
             self.btn_sys_proxy._fill = COLOR_PRIMARY_SOFT
             self.btn_sys_proxy._fill_hover = "#dbe5ff"
@@ -1127,6 +1149,52 @@ class MainWindow:
         self._force_save()
         self._refresh_table()
         messagebox.showinfo("导入完成", f"导入 {len(items)} 个，新增 {added} 个")
+
+    def _on_import_subscription(self):
+        """订阅导入：粘贴订阅地址或分享链接 / Base64 订阅内容。"""
+        dlg = SubscriptionDialog(self.root)
+        self.root.wait_window(dlg)
+        if dlg.result is None:
+            return
+        urls, text = dlg.result
+        self._set_busy(True)
+        self.prog_lbl.configure(text="订阅导入中…")
+
+        def work():
+            items = []
+            try:
+                import requests
+                for url in urls:
+                    try:
+                        resp = requests.get(url, timeout=30, verify=False)
+                        if resp.status_code < 400:
+                            items.extend(parse_subscription(resp.text))
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+            items.extend(parse_subscription(text))
+            try:
+                self.root.after(0, lambda it=items: self._subscription_done(it))
+            except Exception:
+                self._set_busy(False)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _subscription_done(self, items):
+        if not items:
+            self.prog_lbl.configure(text="未解析到代理")
+            self._set_busy(False)
+            messagebox.showinfo("订阅导入", "未从订阅内容中解析到代理\n请检查订阅地址是否有效")
+            return
+        self.proxies, added = store.merge_proxies(self.proxies, items)
+        self._force_save()
+        self._refresh_table()
+        self.prog_lbl.configure(text=f"订阅导入 · 新增 {added}")
+        self._set_busy(False)
+        messagebox.showinfo("订阅导入",
+                            f"解析 {len(items)} 个节点，新增 {added} 个\n"
+                            f"加密代理需点「验证全部」才会标记可用")
 
     def _on_export(self):
         # 奥卡姆剃刀：导出 = 导出当前筛选结果（需要什么就筛什么导出）

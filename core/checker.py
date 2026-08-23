@@ -180,9 +180,59 @@ def _test_connect_tunnel(proxy: Dict, target_host: str = "www.google.com",
         return False, int((time.time() - t0) * 1000)
 
 
+ENCRYPTED_PROTOCOLS = ("ss", "vmess", "vless", "trojan")
+
+
+def _check_encrypted(proxy: Dict, timeout: int = CHECK_TIMEOUT) -> Dict:
+    """加密代理检测：建立隧道 → TLS 握手 → 读取响应数据。
+
+    这类代理并非标准 HTTP 代理，无法用 requests 走代理，因此直接通过
+    加密隧道访问 www.google.com 并完成 TLS 握手，能拿到数据即判定可用。
+    """
+    from core.protocols import connect_proxy, tls_over_stream
+    t0 = time.time()
+    stream = None
+    try:
+        stream = connect_proxy(proxy, "www.google.com", 443, timeout=timeout)
+        tls = tls_over_stream(stream, "www.google.com", timeout=timeout)
+        tls.sendall(b"GET /generate_204 HTTP/1.0\r\n"
+                    b"Host: www.google.com\r\nConnection: close\r\n\r\n")
+        data = b""
+        tls.settimeout(timeout)
+        try:
+            while len(data) < SPEED_SAMPLE_BYTES:
+                chunk = tls.recv(4096)
+                if not chunk:
+                    break
+                data += chunk
+        except socket.timeout:
+            pass
+        except Exception:
+            pass
+        elapsed = int((time.time() - t0) * 1000)
+        ok = len(data) > 0
+        speed = (len(data) / 1024.0) / max(time.time() - t0, 0.001) if ok else 0.0
+        proxy["https_ok"] = ok
+        store.update_proxy_status(proxy, ok, elapsed if ok else 0, speed if ok else 0.0)
+    except Exception:
+        proxy["https_ok"] = False
+        store.update_proxy_status(proxy, False, 0, 0.0)
+    finally:
+        if stream is not None:
+            try:
+                stream.close()
+            except Exception:
+                pass
+    return proxy
+
+
 def check_one(proxy: Dict, test_url: str = CHECK_TEST_URL,
               timeout: int = CHECK_TIMEOUT) -> Dict:
     """验证单个代理：HTTP 连通性 → CONNECT 隧道能力 → 测速。"""
+    proto = proxy.get("protocol", "http")
+    if proto in ENCRYPTED_PROTOCOLS:
+        return _check_encrypted(proxy, timeout=timeout)
+
     purl = _proxy_url(proxy)
     proxies = {"http": purl, "https": purl}
     alive = False

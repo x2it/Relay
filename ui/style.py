@@ -31,6 +31,8 @@ class Icon:
     SEARCH = "⌕"       # 搜索
     COPY = "❐"         # 复制
     PIN = "★"          # 设为当前上游
+    SUBSCRIBE = "↻"     # 订阅导入
+    ALARM = "⚠"        # 紧急/警告
     # 状态类
     DOT_ON = "●"       # 可用
     DOT_OFF = "○"      # 未检测

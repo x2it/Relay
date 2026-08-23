@@ -1,0 +1,50 @@
+[
+  {
+    "name": "TheSpeedX-HTTP (jsdelivr)",
+    "url": "https://cdn.jsdelivr.net/gh/TheSpeedX/PROXY-List@master/http.txt",
+    "parser": "plain",
+    "protocol": "http"
+  },
+  {
+    "name": "TheSpeedX-SOCKS5 (jsdelivr)",
+    "url": "https://cdn.jsdelivr.net/gh/TheSpeedX/PROXY-List@master/socks5.txt",
+    "parser": "plain",
+    "protocol": "socks5"
+  },
+  {
+    "name": "clarketm-http (jsdelivr)",
+    "url": "https://cdn.jsdelivr.net/gh/clarketm/proxy-list@master/proxy-list-raw.txt",
+    "parser": "plain",
+    "protocol": "http"
+  },
+  {
+    "name": "jetkai-kai-proxy (jsdelivr)",
+    "url": "https://cdn.jsdelivr.net/gh/jetkai/kai-proxy@main/proxy-list-raw.txt",
+    "parser": "plain",
+    "protocol": "http"
+  },
+  {
+    "name": "TheSpeedX-HTTP (ghproxy)",
+    "url": "https://ghp.ci/https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
+    "parser": "plain",
+    "protocol": "http"
+  },
+  {
+    "name": "TheSpeedX-SOCKS5 (ghproxy)",
+    "url": "https://ghp.ci/https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt",
+    "parser": "plain",
+    "protocol": "socks5"
+  },
+  {
+    "name": "ProxyScrape-HTTP",
+    "url": "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all",
+    "parser": "plain",
+    "protocol": "http"
+  },
+  {
+    "name": "ProxyScrape-SOCKS5",
+    "url": "https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks5&timeout=10000&country=all",
+    "parser": "plain",
+    "protocol": "socks5"
+  }
+]

@@ -11,6 +11,22 @@ from ui.main_window import MainWindow
 from config import APP_NAME
 
 
+def _set_window_icon(root: tk.Tk):
+    """设置窗口图标（打包与开发环境均生效）。"""
+    candidates = []
+    if getattr(sys, "frozen", False):
+        candidates.append(os.path.join(sys._MEIPASS, "assets", "LiteProxy.ico"))
+    candidates.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "assets", "LiteProxy.ico"))
+    for c in candidates:
+        if os.path.exists(c):
+            try:
+                root.iconbitmap(c)
+                return
+            except Exception:
+                pass
+
+
 def main():
     root = tk.Tk()
     try:
@@ -19,6 +35,8 @@ def main():
         windll.shcore.SetProcessDpiAwareness(1)
     except Exception:
         pass
+
+    _set_window_icon(root)
 
     app = MainWindow(root)
     root.protocol("WM_DELETE_WINDOW", app.on_close)

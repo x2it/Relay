@@ -38,6 +38,8 @@ if ($Target -in 'installer','all') {
     Invoke-PyInstaller -PyArgs @(
         '--noconfirm','--clean','--windowed','--onefile',
         '--name','LiteProxy',
+        '--icon','assets\LiteProxy.ico',
+        '--add-data','assets\LiteProxy.ico;assets',
         '--hidden-import','bs4',
         '--hidden-import','soupsieve',
         '--hidden-import','requests',
