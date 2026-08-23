@@ -512,7 +512,13 @@ class LocalProxyServer:
                       PROXY_MODE_DIRECT: "direct  全直连（调试）"}.get(
             self.rule_engine.mode, self.rule_engine.mode)
 
-        up = self.rotator.current() if self.rotator else None
+        # 当前上游：严格取「下一次转发实际会被分配的上游」，与 do_CONNECT/do_GET 用同一 API
+        # 优先级：HTTPS 代理(占绝大多请求) > 普通 HTTP 代理 > 无。保证看板标签不误导。
+        up = None
+        if self.rotator:
+            up = self.rotator.pick_https()
+            if up is None:
+                up = self.rotator.pick()
         if up is None:
             up_str = "无 · 请先在应用内「抓取代理 → 验证全部」"
             up_tag_cls = "bad"
@@ -520,7 +526,7 @@ class LocalProxyServer:
             proto = up.get("protocol", "http").upper()
             lat = up.get("latency_ms", 0) or 0
             spd = up.get("speed_kbps", 0.0) or 0.0
-            locked_tag = " [★ 锁定]" if self.rotator.is_locked() else ""
+            locked_tag = " [★ 锁定]" if self.rotator and self.rotator.is_locked() else ""
             up_str = (f"{proto}  {up.get('ip','?')}:{up.get('port','?')}"
                       f"  延迟 {lat}ms  速度 {spd:.1f} KB/s{locked_tag}")
             # 上游质量标签：差 → 红 / 中 → 橙 / 优 → 绿
