@@ -308,6 +308,8 @@ object SingBoxManager {
     // ======================================================================
 
     private class RelayPlatform : PlatformInterface {
+        override fun acquireWakeLock(): Boolean = false
+        override fun releaseWakeLock() {}
         override fun autoDetectInterfaceControl(fd: Int) {}
         override fun clearDNSCache() {}
         override fun closeDefaultInterfaceMonitor(listener: InterfaceUpdateListener?) {}
@@ -319,7 +321,7 @@ object SingBoxManager {
         override fun includeAllNetworks(): Boolean = false
         override fun openTun(options: TunOptions?): Int = -1
         override fun packageNameByUid(uid: Int): String? = null
-        override fun readWIFIState(): WIFIState = WIFIState("", "")
+        override fun readWIFIState(): WIFIState = WIFIState()
         override fun sendNotification(notification: Notification?) {}
         override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener?) {}
         override fun uidByPackageName(packageName: String?): Int = -1

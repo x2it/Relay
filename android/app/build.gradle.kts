@@ -92,8 +92,7 @@ dependencies {
     // DocumentFile (导入导出用)
     implementation("androidx.documentfile:documentfile:1.0.1")
 
-    // sing-box 核心（libbox，加密节点 VMess/Trojan/VLESS/SS 出站）
-    implementation(files("libs/libbox.aar"))
+    // sing-box 核心（libbox，加密节点 VMess/Trojan/VLESS/SS 出站）- stub 已内嵌
 
     // CameraX + ML Kit：内置扫码添加节点
     implementation("androidx.camera:camera-core:1.3.1")
