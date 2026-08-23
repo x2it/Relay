@@ -66,7 +66,7 @@ class MainWindow:
     def __init__(self, root: tk.Tk):
         self.root = root
         apply_style(root)
-        root.title(APP_NAME)
+        root.title(f"{APP_NAME} v{APP_VERSION}")
         root.geometry("1180x720")
         root.minsize(960, 560)
         root.configure(bg=theme.COLOR_BG)
@@ -552,7 +552,7 @@ class MainWindow:
         tk.Label(ci, text="", bg=theme.COLOR_CARD).pack(anchor="w", pady=2)
         tk.Label(ci, text="· about", bg=theme.COLOR_CARD, fg=theme.COLOR_PRIMARY,
                  font=(FONT_FAMILY, 11, "bold")).pack(anchor="w", pady=(14, 8))
-        tk.Label(ci, text=f"{APP_NAME} v{APP_VERSION} · terminal 风格代理工具（对齐 Android）",
+        tk.Label(ci, text="终端风格代理工具 · 对齐 Android 版",
                  bg=theme.COLOR_CARD, fg=theme.COLOR_TEXT_MUTED,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(anchor="w")
         tk.Label(ci, text="支持 HTTP/HTTPS/SOCKS4/SOCKS5 与 SS/VMess/VLess/Trojan 加密节点订阅",

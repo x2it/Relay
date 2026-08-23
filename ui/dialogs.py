@@ -209,7 +209,10 @@ class SourcesDialog(tk.Toplevel):
             ("status", "状态", 56, "center"),
             ("count", "数量", 72, "e"),
         ]:
-            tree.heading(c, text=h, command=(lambda: self._toggle_all()) if c == "enabled" else None)
+            if c == "enabled":
+                tree.heading(c, text=h, command=lambda: self._toggle_all())
+            else:
+                tree.heading(c, text=h)
             tree.column(c, width=w, anchor=a, stretch=(c == "url"))
         tree.pack(side="left", fill="both", expand=True)
         vsb = ttk.Scrollbar(tree_wrap, orient="vertical", command=tree.yview)
@@ -218,7 +221,6 @@ class SourcesDialog(tk.Toplevel):
         self.tree = tree
         tree.bind("<Button-1>", self._on_tree_click)
         tree.bind("<Double-1>", self._on_double)
-        self._render()
 
         form = tk.Frame(body, bg=theme.COLOR_BG)
         form.pack(fill="x", pady=(16, 0))
@@ -262,6 +264,8 @@ class SourcesDialog(tk.Toplevel):
                                    bg=theme.COLOR_BG, fg=theme.COLOR_TEXT_FAINT,
                                    font=(FONT_FAMILY, FONT_SIZE - 1))
         self.status_lbl.pack(side="left")
+
+        self._render()
 
         btns = tk.Frame(body, bg=theme.COLOR_BG)
         btns.pack(fill="x", pady=(16, 0))

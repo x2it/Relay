@@ -13,8 +13,8 @@ android {
         applicationId = "com.freeproxy.app"
         minSdk = 24
         targetSdk = 33
-        versionCode = 17
-        versionName = "1.4.1"
+        versionCode = 18
+        versionName = "1.5.1"
         vectorDrawables { useSupportLibrary = true }
 
         // sing-box 原生库只保留 arm64（现代安卓手机），APK 体积大幅下降

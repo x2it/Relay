@@ -23,7 +23,7 @@ import sys
 
 # 应用基础信息
 APP_NAME = "Relay"
-APP_VERSION = "1.7.2"
+APP_VERSION = "1.7.3"
 APP_COPYRIGHT = "© 2026 知行工作室"
 
 # 数据目录：打包后放在 exe 同级，绿色版可携带

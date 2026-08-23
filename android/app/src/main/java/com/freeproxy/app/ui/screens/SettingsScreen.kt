@@ -57,7 +57,7 @@ import com.freeproxy.app.ui.theme.Warn
 import com.freeproxy.app.vpn.RouteMode
 import com.freeproxy.app.vpn.SUGGESTED_EXCLUDED_PACKAGES
 
-private const val VERSION = "v1.4.1"
+private const val VERSION = "v1.5.1"
 
 /**
  * CONF 设置页（terminal 极简风格）
@@ -228,6 +228,29 @@ fun SettingsScreen(
                 color = Good,
                 onChange = { if (it) onStartLocalProxy() else onStopLocalProxy() },
             )
+
+            // ==================== help ====================
+            GroupHeader("help · 新手引导 & 自检清单")
+            val helpLines = listOf(
+                "■ 1. HOME → 一键流程  =  抓取源 → 解析订阅 → 验证测速 → 启动 VPN",
+                "■ 2. 节点数量少 → 去 [抓取源] 切到 B 类 (GitHub) 或 C 类 (HTML)，再抓一次",
+                "■ 3. 开了 VPN 仍打不开 Google → 看 LIST 页面的「存活」栏，要 > 0 个节点",
+                "■ 4. 单个节点很快但卡顿 → 开 smart 模式，国内直连不走代理",
+                "■ 5. 某 App 无法联网 → 在 adv - app exclude 把它加到分流排除名单",
+                "■ 6. 自检项（都绿了 = 配置正确）：",
+                "     [●] 节点 ≥ 10 且存活 ≥ 1    [●] 验证速度 > 20 KB/s    [●] 已启动 VPN",
+            )
+            Column(Modifier.padding(start = 4.dp, top = 2.dp, bottom = 12.dp)) {
+                helpLines.forEach { ln ->
+                    Text(
+                        ln,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        color = if (ln.startsWith("■")) OnSurfaceDim else OnSurfaceDim,
+                        modifier = Modifier.padding(vertical = 1.dp),
+                    )
+                }
+            }
 
             // ==================== about ====================
             GroupHeader("about")
