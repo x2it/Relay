@@ -12,7 +12,7 @@ import time
 import socket
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Dict, Callable, Optional
+from typing import List, Dict, Callable, Optional, Tuple
 
 import requests
 
@@ -301,8 +301,18 @@ def check_one(proxy: Dict, test_url: str = CHECK_TEST_URL,
 def check_batch(proxies: List[Dict],
                 workers: int = CHECK_WORKERS,
                 on_done: Optional[Callable[[Dict, int, int], None]] = None,
-                only_unchecked: bool = False) -> List[Dict]:
-    """并发验证。on_done(proxy, done, total)。"""
+                only_unchecked: bool = False,
+                cancel_event: Optional["threading.Event"] = None) -> Tuple[List[Dict], bool]:
+    """并发验证。
+
+    返回 (proxies, was_cancelled)。
+    - was_cancelled=True 表示在 cancel_event 触发后主动中止，剩余未验证条目跳过。
+    - 分块 submit：点取消后还没入池的任务不再提交，响应速度从"几万个任务全跑完"
+      缩成"当前 chunk + worker 数"内即退出。
+    """
+    import threading as _th  # 避免循环 import 告警（checker 顶部已 import threading，
+                             # 这里加别名兼容万一将来改名，实际用顶部的即可）
+
     targets = []
     for p in proxies:
         if only_unchecked and p.get("last_check"):
@@ -310,19 +320,37 @@ def check_batch(proxies: List[Dict],
         targets.append(p)
     total = len(targets)
     done = 0
+    cancelled = False
     lock = threading.Lock()
 
+    CHUNK = max(workers * 4, 64)  # 每次提交 4*workers，取消响应粒度 ≈ CHUNK
+
+    def _is_cancel():
+        return cancel_event is not None and cancel_event.is_set()
+
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        future_map = {ex.submit(check_one, p): p for p in targets}
-        for fut in as_completed(future_map):
-            p = future_map[fut]
-            try:
-                fut.result()
-            except Exception:
-                p["alive"] = False
-                p["https_ok"] = False
-            with lock:
-                done += 1
-            if on_done:
-                on_done(p, done, total)
-    return proxies
+        # 分块 submit：每块之前检查取消位
+        for i in range(0, total, CHUNK):
+            if _is_cancel():
+                cancelled = True
+                break
+            chunk = targets[i:i + CHUNK]
+            future_map = {ex.submit(check_one, p): p for p in chunk}
+            for fut in as_completed(future_map):
+                p = future_map[fut]
+                try:
+                    fut.result()
+                except Exception:
+                    p["alive"] = False
+                    p["https_ok"] = False
+                with lock:
+                    done += 1
+                if on_done:
+                    on_done(p, done, total)
+    # 取消后剩余 targets 里未处理的也标成未检测（不要留上次的 old alive 误导用户）
+    if cancelled and done < total:
+        for p in targets[done:]:
+            p["alive"] = False
+            p["latency_ms"] = 0
+            p["speed_kbps"] = 0.0
+    return proxies, cancelled

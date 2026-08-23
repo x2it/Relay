@@ -6,14 +6,12 @@ import threading
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
-from config import (APP_NAME, APP_VERSION, COLOR_BG, COLOR_CARD, COLOR_BAR,
-                    COLOR_HOVER, COLOR_BORDER, COLOR_TEXT, COLOR_TEXT_MUTED,
-                    COLOR_TEXT_FAINT, COLOR_PRIMARY, COLOR_PRIMARY_SOFT,
-                    COLOR_GOOD, COLOR_BAD, COLOR_WARN, COLOR_ROW_ALT,
-                    COLOR_ROW_HOVER, FONT_FAMILY, FONT_SIZE,
-                    DEFAULT_LOCAL_HOST, DEFAULT_LOCAL_PORT, MODE_LABELS)
-from ui.style import apply_style, RoundedButton, StatusBar, Card, Icon, NavItem, TermLine
-from ui.dialogs import SettingsDialog, SourcesDialog, SubscriptionDialog
+from config import (APP_NAME, APP_VERSION, APP_COPYRIGHT, FONT_FAMILY, FONT_SIZE,
+                    DEFAULT_LOCAL_HOST, DEFAULT_LOCAL_PORT, MODE_LABELS,
+                    theme)
+from ui.style import (apply_style, RoundedButton, StatusBar, Card, Icon, NavItem,
+                      TermLine, RelayEntry)
+from ui.dialogs import SettingsDialog, SourcesDialog, SubscriptionDialog, HelpDialog
 from core import store, fetcher, checker
 from core.local_proxy import LocalProxyServer, ProxyRotator, SystemProxyManager
 from core.protocols import ALL_PROTOCOLS, PROTOCOL_LABELS, ENCRYPTED_PROTOCOLS, parse_subscription
@@ -60,18 +58,18 @@ def _dot_char(p):
 
 def _dot_color(p):
     if not p.get("last_check"):
-        return COLOR_TEXT_FAINT
-    return COLOR_GOOD if p.get("alive") else COLOR_BAD
+        return theme.COLOR_TEXT_FAINT
+    return theme.COLOR_GOOD if p.get("alive") else theme.COLOR_BAD
 
 
 class MainWindow:
     def __init__(self, root: tk.Tk):
         self.root = root
         apply_style(root)
-        root.title(f"{APP_NAME}")
+        root.title(APP_NAME)
         root.geometry("1180x720")
         root.minsize(960, 560)
-        root.configure(bg=COLOR_BG)
+        root.configure(bg=theme.COLOR_BG)
 
         # 数据
         self.proxies = store.load_proxies()
@@ -88,11 +86,13 @@ class MainWindow:
             get_proxies=lambda: self.proxies,
             auto_switch=self.settings.get("auto_switch", True),
             max_latency_ms=self.settings.get("max_latency_ms", 3000),
+            min_speed_kbps=float(self.settings.get("min_speed_kbps", 0) or 0),
         )
         self.server: LocalProxyServer = None
         # 系统代理管理（两阶段提交 + 必达恢复）
         self.sys_proxy_mgr = SystemProxyManager()
         self._busy = False
+        self._check_cancel = threading.Event()  # 验证取消标志：点"取消验证"后 set
         self._sort_key = None      # 当前排序列: ip/port/latency/speed
         self._sort_desc = False    # 降序？
         # 规则引擎（智能分流）
@@ -109,22 +109,35 @@ class MainWindow:
         if self.proxies:
             alive = sum(1 for p in self.proxies if p.get("alive"))
             self.prog_lbl.configure(text=f"已加载 {len(self.proxies)} 个代理 · {alive} 个可用")
+        # 启动即拉起本地代理监听，省去手动点「启动本地代理」
+        self._auto_start_proxy()
+
+    def _auto_start_proxy(self):
+        """启动时自动拉起本地代理监听。
+
+        用户期望"启动应用即可用"，而非先手动点「启动本地代理」。
+        端口被占用时弹窗提示（_start_server 内部处理），失败不阻塞主界面。
+        """
+        try:
+            self._start_server()
+        except Exception:
+            pass
 
     # ---------------- UI ----------------
     def _build_ui(self):
         # ---- 顶栏：品牌 + terminal 导航 + 模式/紧急恢复 ----
-        top = tk.Frame(self.root, bg=COLOR_BAR, height=48)
+        top = tk.Frame(self.root, bg=theme.COLOR_BAR, height=48)
         top.pack(fill="x", side="top")
         top.pack_propagate(False)
         TermLine(top).pack(fill="x", side="bottom")
 
-        tk.Label(top, text=APP_NAME, bg=COLOR_BAR, fg=COLOR_PRIMARY,
+        tk.Label(top, text=APP_NAME, bg=theme.COLOR_BAR, fg=theme.COLOR_PRIMARY,
                  font=(FONT_FAMILY, 14, "bold")).pack(side="left", padx=(18, 0))
-        tk.Label(top, text=f"  v{APP_VERSION}", bg=COLOR_BAR, fg=COLOR_TEXT_FAINT,
+        tk.Label(top, text=f"  v{APP_VERSION}", bg=theme.COLOR_BAR, fg=theme.COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left")
 
         # terminal 导航：[HOME] [LIST] [CONF]
-        nav = tk.Frame(top, bg=COLOR_BAR)
+        nav = tk.Frame(top, bg=theme.COLOR_BAR)
         nav.pack(side="left", padx=(28, 0))
         self.nav_home = NavItem(nav, "HOME", selected=True, command=lambda: self._switch_view("home"))
         self.nav_list = NavItem(nav, "LIST", command=lambda: self._switch_view("list"))
@@ -132,12 +145,16 @@ class MainWindow:
         for it in (self.nav_home, self.nav_list, self.nav_conf):
             it.pack(side="left", padx=6)
 
+        # 帮助（常驻，ghost 样式不抢戏但始终可见）
+        RoundedButton(top, f"? 帮助", command=self._open_help, kind="ghost").pack(
+            side="right", padx=(6, 0), pady=9)
+
         # 紧急恢复（始终可见，小而醒目）
         RoundedButton(top, f"{Icon.ALARM} 恢复", command=self._on_emergency_restore,
                       kind="danger").pack(side="right", padx=(6, 14), pady=9)
 
         # 模式切换
-        tk.Label(top, text="mode", bg=COLOR_BAR, fg=COLOR_TEXT_FAINT,
+        tk.Label(top, text="模式", bg=theme.COLOR_BAR, fg=theme.COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="right", padx=(0, 0))
         self.mode_var = tk.StringVar(
             value=MODE_LABELS.get(self.settings.get("mode", "smart"), "smart"))
@@ -147,7 +164,7 @@ class MainWindow:
         cb_mode.bind("<<ComboboxSelected>>", lambda e: self._on_mode_change())
 
         # ---- 内容区：三视图容器 ----
-        content = tk.Frame(self.root, bg=COLOR_BG)
+        content = tk.Frame(self.root, bg=theme.COLOR_BG)
         content.pack(fill="both", expand=True)
 
         self._view_home = self._build_view_home(content)
@@ -166,6 +183,139 @@ class MainWindow:
         self.status.set("count", "代理 0")
 
         self._tick()
+        # 主题变更事件：设置对话框切主题时让主窗口即时重绘
+        self.root.bind("<<RelayThemeChanged>>", lambda e: self._reapply_theme())
+
+    # ---------- 主题即时应用 ----------
+    def _reapply_theme(self):
+        """切换主题后：重建 ttk style + 递归改 tk 控件色 + 刷新 Treeview/Combobox/Scrollbar。"""
+        apply_style(self.root)
+        self.root.configure(bg=theme.COLOR_BG)
+
+        # 收集所有已存在的 Treeview + Combobox + Toplevel（设置/抓取源对话框）
+        # 因为 ttk style 重配后已实例化的 Treeview.Heading 不会自动刷新，需要手动 configure
+        all_toplevels = [self.root]
+        try:
+            all_toplevels += list(self.root.winfo_children())
+        except Exception:
+            pass
+
+        def _walk(w):
+            try:
+                cls = w.winfo_class()
+            except Exception:
+                return
+            if cls in ("Frame", "TFrame", "Labelframe", "TLabelframe", "Card", "Toplevel"):
+                try:
+                    # Toplevel/Frame → BG；Card → CARD
+                    if cls == "Card":
+                        w.configure(bg=theme.COLOR_CARD)
+                    else:
+                        w.configure(bg=theme.COLOR_BG)
+                except Exception:
+                    pass
+            elif cls == "Treeview":
+                try:
+                    w.configure(
+                        style="Treeview",
+                        background=theme.COLOR_CARD,
+                        foreground=theme.COLOR_TEXT,
+                        fieldbackground=theme.COLOR_CARD,
+                    )
+                    w.tag_configure("odd", background=theme.COLOR_ROW_ALT)
+                    w.tag_configure("selected",
+                                    background=theme.COLOR_PRIMARY_SOFT,
+                                    foreground=theme.COLOR_PRIMARY)
+                except Exception:
+                    pass
+            elif cls == "TCombobox":
+                try:
+                    w.configure(style="TCombobox")
+                except Exception:
+                    pass
+            elif cls == "TScrollbar":
+                try:
+                    w.configure(style=("Vertical.TScrollbar"
+                                      if "vertical" in str(w.cget("orient")).lower()
+                                      else "Horizontal.TScrollbar"))
+                except Exception:
+                    pass
+            elif cls == "Label":
+                try:
+                    # 依当前 bg 是否像 CARD 决定改成 CARD 还是 BG
+                    cur_bg = ""
+                    try:
+                        cur_bg = w.cget("bg")
+                    except Exception:
+                        cur_bg = ""
+                    is_card_like = False
+                    if isinstance(cur_bg, str):
+                        lo = cur_bg.lower()
+                        is_card_like = (
+                            lo in ("#171b21", theme.COLOR_CARD.lower(), "#ffffff")
+                            or ("card" in lo) or ("COLOR_CARD" in lo)
+                        )
+                    w.configure(bg=(theme.COLOR_CARD if is_card_like else theme.COLOR_BG))
+                except Exception:
+                    pass
+            elif cls == "Entry":
+                try:
+                    w.configure(bg=theme.COLOR_ENTRY_BG, fg=theme.COLOR_TEXT,
+                                highlightbackground=theme.COLOR_BORDER,
+                                insertbackground=theme.COLOR_TEXT,
+                                selectbackground=theme.COLOR_PRIMARY_SOFT,
+                                selectforeground=theme.COLOR_PRIMARY)
+                except Exception:
+                    pass
+            elif cls == "Text":
+                try:
+                    w.configure(bg=theme.COLOR_CARD, fg=theme.COLOR_TEXT,
+                                insertbackground=theme.COLOR_CARD,
+                                selectbackground=theme.COLOR_PRIMARY_SOFT)
+                except Exception:
+                    pass
+            elif cls in ("Checkbutton", "Radiobutton"):
+                try:
+                    w.configure(bg=theme.COLOR_BG, fg=theme.COLOR_TEXT,
+                                activebackground=theme.COLOR_BG,
+                                selectcolor=theme.COLOR_CARD)
+                except Exception:
+                    pass
+            elif cls == "Button":
+                # 系统按钮 bg → 忽略（RoundedButton 自己会 rebuild）
+                pass
+            for child in w.winfo_children():
+                _walk(child)
+
+        def _walk_all():
+            _walk(self.root)
+            # Toplevel 对话框们（设置/抓取源/帮助）如果已打开也要刷新
+            try:
+                for tl in self.root.winfo_toplevel().winfo_children():
+                    if isinstance(tl, tk.Toplevel):
+                        try:
+                            tl.configure(bg=theme.COLOR_BG)
+                        except Exception:
+                            pass
+                        _walk(tl)
+            except Exception:
+                pass
+
+        _walk_all()
+        # 刷新导航颜色（NavItem 存的是旧颜色）
+        self.nav_home.set_selected(self.nav_home._selected)
+        self.nav_list.set_selected(self.nav_list._selected)
+        self.nav_conf.set_selected(self.nav_conf._selected)
+        # 刷新系统代理按钮颜色
+        self._update_sys_proxy_btn()
+        # 刷新 4 个核心按钮颜色
+        self.btn_fetch.rebuild(f"{Icon.FETCH} 抓取代理", kind="primary")
+        self.btn_check.rebuild(f"{Icon.CHECK} 验证全部", kind="soft")
+        self.btn_oneshot.rebuild(f"{Icon.ONESHOT} 一键流程", kind="primary")
+        self.btn_toggle.rebuild(
+            (f"{Icon.STOP} 停止本地代理" if self.server and self.server.is_running()
+             else f"{Icon.START} 启动本地代理"),
+            kind=("danger" if self.server and self.server.is_running() else "primary"))
 
     # ---------- 视图切换 ----------
     def _switch_view(self, name):
@@ -181,21 +331,21 @@ class MainWindow:
 
     # ============ HOME 视图：总览 + 主流程 ============
     def _build_view_home(self, parent):
-        v = tk.Frame(parent, bg=COLOR_BG)
-        pad = tk.Frame(v, bg=COLOR_BG)
+        v = tk.Frame(parent, bg=theme.COLOR_BG)
+        pad = tk.Frame(v, bg=theme.COLOR_BG)
         pad.pack(fill="both", expand=True, padx=16, pady=12)
 
         # 主流程操作卡
         toolbar = Card(pad)
         toolbar.pack(fill="x")
-        tb = tk.Frame(toolbar, bg=COLOR_CARD, padx=14, pady=12)
+        tb = tk.Frame(toolbar, bg=theme.COLOR_CARD, padx=14, pady=12)
         tb.pack(fill="x")
 
-        row1 = tk.Frame(tb, bg=COLOR_CARD)
+        row1 = tk.Frame(tb, bg=theme.COLOR_CARD)
         row1.pack(fill="x")
         self.btn_fetch = RoundedButton(row1, f"{Icon.FETCH} 抓取代理", command=self._on_fetch)
         self.btn_fetch.pack(side="left", padx=6)
-        self.btn_check = RoundedButton(row1, f"{Icon.CHECK} 验证全部", command=self._on_check_all, kind="soft")
+        self.btn_check = RoundedButton(row1, f"{Icon.CHECK} 验证全部", command=self._on_check_btn_click, kind="soft")
         self.btn_check.pack(side="left", padx=6)
         self._vsep(row1)
         self.btn_oneshot = RoundedButton(row1, f"{Icon.ONESHOT} 一键流程", command=self._on_oneshot)
@@ -205,7 +355,7 @@ class MainWindow:
         self.btn_toggle.pack(side="left", padx=6)
         RoundedButton(row1, "诊断", command=self._open_diagnostic, kind="ghost").pack(side="left", padx=6)
 
-        row2 = tk.Frame(tb, bg=COLOR_CARD)
+        row2 = tk.Frame(tb, bg=theme.COLOR_CARD)
         row2.pack(fill="x", pady=(10, 0))
         RoundedButton(row2, f"{Icon.IMPORT} 导入", command=self._on_import, kind="ghost").pack(side="left", padx=(0, 6))
         RoundedButton(row2, f"{Icon.EXPORT} 导出", command=self._on_export, kind="ghost").pack(side="left", padx=6)
@@ -220,63 +370,61 @@ class MainWindow:
         # 进程可视化行
         prog = Card(pad)
         prog.pack(fill="x", pady=(10, 0))
-        prog_inner = tk.Frame(prog, bg=COLOR_CARD, padx=14, pady=10)
+        prog_inner = tk.Frame(prog, bg=theme.COLOR_CARD, padx=14, pady=10)
         prog_inner.pack(fill="x")
 
         self.prog_bar = ttk.Progressbar(prog_inner, length=240, mode="determinate",
                                         maximum=100, value=0)
         self.prog_bar.pack(side="left")
-        self.prog_lbl = tk.Label(prog_inner, text="就绪", bg=COLOR_CARD,
-                                 fg=COLOR_TEXT_MUTED, font=(FONT_FAMILY, FONT_SIZE))
+        self.prog_lbl = tk.Label(prog_inner, text="就绪", bg=theme.COLOR_CARD,
+                                 fg=theme.COLOR_TEXT_MUTED, font=(FONT_FAMILY, FONT_SIZE))
         self.prog_lbl.pack(side="left", padx=(12, 0))
-        self.stat_lbl = tk.Label(prog_inner, text="", bg=COLOR_CARD,
-                                 fg=COLOR_TEXT_FAINT, font=(FONT_FAMILY, FONT_SIZE))
+        self.stat_lbl = tk.Label(prog_inner, text="", bg=theme.COLOR_CARD,
+                                 fg=theme.COLOR_TEXT_FAINT, font=(FONT_FAMILY, FONT_SIZE))
         self.stat_lbl.pack(side="right")
 
         # 总览信息：本地代理 / 上游 / 统计
         over = Card(pad)
         over.pack(fill="both", expand=True, pady=(10, 0))
-        oi = tk.Frame(over, bg=COLOR_CARD, padx=18, pady=16)
+        oi = tk.Frame(over, bg=theme.COLOR_CARD, padx=18, pady=16)
         oi.pack(fill="both", expand=True)
-        tk.Label(oi, text="· status", bg=COLOR_CARD, fg=COLOR_PRIMARY,
+        tk.Label(oi, text="· status", bg=theme.COLOR_CARD, fg=theme.COLOR_PRIMARY,
                  font=(FONT_FAMILY, 11, "bold")).pack(anchor="w", pady=(0, 10))
 
-        self.home_local_lbl = tk.Label(oi, text="", bg=COLOR_CARD, fg=COLOR_TEXT_MUTED,
+        self.home_local_lbl = tk.Label(oi, text="", bg=theme.COLOR_CARD, fg=theme.COLOR_TEXT_MUTED,
                                        font=(FONT_FAMILY, FONT_SIZE + 1))
         self.home_local_lbl.pack(anchor="w", pady=3)
-        self.home_upstream_lbl = tk.Label(oi, text="", bg=COLOR_CARD, fg=COLOR_TEXT_MUTED,
+        self.home_upstream_lbl = tk.Label(oi, text="", bg=theme.COLOR_CARD, fg=theme.COLOR_TEXT_MUTED,
                                           font=(FONT_FAMILY, FONT_SIZE + 1))
         self.home_upstream_lbl.pack(anchor="w", pady=3)
-        self.home_stats_lbl = tk.Label(oi, text="", bg=COLOR_CARD, fg=COLOR_TEXT_MUTED,
+        self.home_stats_lbl = tk.Label(oi, text="", bg=theme.COLOR_CARD, fg=theme.COLOR_TEXT_MUTED,
                                        font=(FONT_FAMILY, FONT_SIZE + 1))
         self.home_stats_lbl.pack(anchor="w", pady=3)
-        tk.Label(oi, text="", bg=COLOR_CARD).pack(anchor="w")
+        tk.Label(oi, text="", bg=theme.COLOR_CARD).pack(anchor="w")
         self.home_tip = tk.Label(oi, text="一键流程：抓取 → 验证 → 启动本地代理，浏览器代理设为 127.0.0.1:8888 即可",
-                                 bg=COLOR_CARD, fg=COLOR_TEXT_FAINT,
+                                 bg=theme.COLOR_CARD, fg=theme.COLOR_TEXT_FAINT,
                                  font=(FONT_FAMILY, FONT_SIZE - 1))
         self.home_tip.pack(anchor="w", pady=(8, 0))
         return v
 
     # ============ LIST 视图：代理表 ============
     def _build_view_list(self, parent):
-        v = tk.Frame(parent, bg=COLOR_BG)
-        pad = tk.Frame(v, bg=COLOR_BG)
+        v = tk.Frame(parent, bg=theme.COLOR_BG)
+        pad = tk.Frame(v, bg=theme.COLOR_BG)
         pad.pack(fill="both", expand=True, padx=16, pady=12)
 
         # 过滤栏
-        filt = tk.Frame(pad, bg=COLOR_BG)
+        filt = tk.Frame(pad, bg=theme.COLOR_BG)
         filt.pack(fill="x", pady=(0, 8))
         self.search_var = tk.StringVar()
         self.search_var.trace_add("write", lambda *_: self._refresh_table())
-        tk.Label(filt, text="search", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
+        tk.Label(filt, text="搜索", bg=theme.COLOR_BG, fg=theme.COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left")
-        se = tk.Entry(filt, textvariable=self.search_var, width=22,
-                      relief="solid", bd=1, highlightthickness=0,
-                      font=(FONT_FAMILY, FONT_SIZE), fg=COLOR_TEXT)
+        se = RelayEntry(filt, textvariable=self.search_var, width=22)
         se.pack(side="left", padx=(8, 16))
         se.bind("<Return>", lambda e: self._refresh_table())
 
-        tk.Label(filt, text="protocol", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
+        tk.Label(filt, text="协议", bg=theme.COLOR_BG, fg=theme.COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left")
         self.proto_var = tk.StringVar(value="全部")
         proto_choices = ["全部"] + [PROTOCOL_LABELS.get(k, k) for k in ALL_PROTOCOLS]
@@ -285,15 +433,17 @@ class MainWindow:
         cb_proto.pack(side="left", padx=(4, 12))
         cb_proto.bind("<<ComboboxSelected>>", lambda e: self._refresh_table())
 
-        tk.Label(filt, text="https", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
+        # "能力"维度：能否打开 HTTPS 站点（CONNECT 隧道能力）。与左侧"协议"维度正交，
+        # 避免两者语义撞车导致"功能重叠"的困惑。
+        tk.Label(filt, text="能力", bg=theme.COLOR_BG, fg=theme.COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left")
         self.https_var = tk.StringVar(value="全部")
-        cb_https = ttk.Combobox(filt, textvariable=self.https_var, width=8, state="readonly",
-                                values=["全部", "仅 HTTPS", "仅 HTTP"])
+        cb_https = ttk.Combobox(filt, textvariable=self.https_var, width=13, state="readonly",
+                                values=["全部", "支持HTTPS站点", "仅明文"])
         cb_https.pack(side="left", padx=(4, 12))
         cb_https.bind("<<ComboboxSelected>>", lambda e: self._refresh_table())
 
-        tk.Label(filt, text="status", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
+        tk.Label(filt, text="状态", bg=theme.COLOR_BG, fg=theme.COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left")
         self.status_var = tk.StringVar(value="全部")
         cb_status = ttk.Combobox(filt, textvariable=self.status_var, width=8, state="readonly",
@@ -302,36 +452,32 @@ class MainWindow:
         cb_status.bind("<<ComboboxSelected>>", lambda e: self._refresh_table())
 
         self._vsep(filt)
-        tk.Label(filt, text="lat≤", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
+        tk.Label(filt, text="延迟≤", bg=theme.COLOR_BG, fg=theme.COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left")
         self.max_lat_var = tk.StringVar()
         self.max_lat_var.trace_add("write", lambda *_: self._refresh_table())
-        e_lat = tk.Entry(filt, textvariable=self.max_lat_var, width=6,
-                         relief="solid", bd=1, highlightthickness=0,
-                         font=(FONT_FAMILY, FONT_SIZE), fg=COLOR_TEXT)
+        e_lat = RelayEntry(filt, textvariable=self.max_lat_var, width=6)
         e_lat.pack(side="left", padx=(4, 2))
-        tk.Label(filt, text="ms", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
+        tk.Label(filt, text="ms", bg=theme.COLOR_BG, fg=theme.COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left", padx=(0, 12))
 
-        tk.Label(filt, text="spd≥", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
+        tk.Label(filt, text="速度≥", bg=theme.COLOR_BG, fg=theme.COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left")
         self.min_spd_var = tk.StringVar()
         self.min_spd_var.trace_add("write", lambda *_: self._refresh_table())
-        e_spd = tk.Entry(filt, textvariable=self.min_spd_var, width=6,
-                         relief="solid", bd=1, highlightthickness=0,
-                         font=(FONT_FAMILY, FONT_SIZE), fg=COLOR_TEXT)
+        e_spd = RelayEntry(filt, textvariable=self.min_spd_var, width=6)
         e_spd.pack(side="left", padx=(4, 2))
-        tk.Label(filt, text="KB/s", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
+        tk.Label(filt, text="KB/s", bg=theme.COLOR_BG, fg=theme.COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left", padx=(0, 4))
 
-        self.count_lbl = tk.Label(filt, text="", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
+        self.count_lbl = tk.Label(filt, text="", bg=theme.COLOR_BG, fg=theme.COLOR_TEXT_FAINT,
                                   font=(FONT_FAMILY, FONT_SIZE))
         self.count_lbl.pack(side="right")
 
         # 表格卡片
         table_card = Card(pad)
         table_card.pack(fill="both", expand=True)
-        tw = tk.Frame(table_card, bg=COLOR_CARD)
+        tw = tk.Frame(table_card, bg=theme.COLOR_CARD)
         tw.pack(fill="both", expand=True, padx=1, pady=1)
 
         self.tree = ttk.Treeview(tw, columns=COLUMNS, show="headings")
@@ -345,10 +491,10 @@ class MainWindow:
                 self.tree.heading(c, text=COL_HEADERS[c])
             anchor = "e" if c in ("idx", "port", "latency", "speed") else "w"
             self.tree.column(c, width=COL_WIDTH[c], anchor=anchor, stretch=True)
-        self.tree.tag_configure("ok", foreground=COLOR_GOOD)
-        self.tree.tag_configure("bad", foreground=COLOR_BAD)
-        self.tree.tag_configure("alt", background=COLOR_ROW_ALT)
-        self.tree.tag_configure("hover", background=COLOR_ROW_HOVER)
+        self.tree.tag_configure("ok", foreground=theme.COLOR_GOOD)
+        self.tree.tag_configure("bad", foreground=theme.COLOR_BAD)
+        self.tree.tag_configure("alt", background=theme.COLOR_ROW_ALT)
+        self.tree.tag_configure("hover", background=theme.COLOR_ROW_HOVER)
 
         vsb = ttk.Scrollbar(tw, orient="vertical", command=self.tree.yview)
         hsb = ttk.Scrollbar(tw, orient="horizontal", command=self.tree.xview)
@@ -365,10 +511,10 @@ class MainWindow:
         self.tree.bind("<Leave>", lambda e: self._clear_hover())
 
         # 右键菜单
-        self.menu = tk.Menu(self.root, tearoff=0, bg=COLOR_CARD, fg=COLOR_TEXT,
-                            activebackground=COLOR_PRIMARY, activeforeground="#ffffff",
+        self.menu = tk.Menu(self.root, tearoff=0, bg=theme.COLOR_CARD, fg=theme.COLOR_TEXT,
+                            activebackground=theme.COLOR_PRIMARY, activeforeground="#ffffff",
                             bd=0, relief="flat", font=(FONT_FAMILY, FONT_SIZE),
-                            borderwidth=0, selectcolor=COLOR_PRIMARY)
+                            borderwidth=0, selectcolor=theme.COLOR_PRIMARY)
         self.menu.add_command(label="锁定此代理", command=self._lock_selected)
         self.menu.add_command(label="解除锁定", command=self._unlock)
         self.menu.add_command(label=f"{Icon.PIN} 设为当前上游", command=self._set_current_upstream)
@@ -380,22 +526,22 @@ class MainWindow:
 
     # ============ CONF 视图：设置入口 ============
     def _build_view_conf(self, parent):
-        v = tk.Frame(parent, bg=COLOR_BG)
-        pad = tk.Frame(v, bg=COLOR_BG)
+        v = tk.Frame(parent, bg=theme.COLOR_BG)
+        pad = tk.Frame(v, bg=theme.COLOR_BG)
         pad.pack(fill="both", expand=True, padx=16, pady=12)
 
         card = Card(pad)
         card.pack(fill="both", expand=True)
-        ci = tk.Frame(card, bg=COLOR_CARD, padx=18, pady=16)
+        ci = tk.Frame(card, bg=theme.COLOR_CARD, padx=18, pady=16)
         ci.pack(fill="both", expand=True)
 
-        tk.Label(ci, text="· config", bg=COLOR_CARD, fg=COLOR_PRIMARY,
+        tk.Label(ci, text="· config", bg=theme.COLOR_CARD, fg=theme.COLOR_PRIMARY,
                  font=(FONT_FAMILY, 11, "bold")).pack(anchor="w", pady=(0, 14))
 
         def conf_row(label, btn):
-            r = tk.Frame(ci, bg=COLOR_CARD)
+            r = tk.Frame(ci, bg=theme.COLOR_CARD)
             r.pack(fill="x", pady=6)
-            tk.Label(r, text=label, bg=COLOR_CARD, fg=COLOR_TEXT_MUTED,
+            tk.Label(r, text=label, bg=theme.COLOR_CARD, fg=theme.COLOR_TEXT_MUTED,
                      font=(FONT_FAMILY, FONT_SIZE + 1)).pack(side="left", padx=(0, 18))
             btn.pack(side="right")
 
@@ -403,21 +549,21 @@ class MainWindow:
         conf_row("抓取源管理（A/B/C/D/E + 自定义）", RoundedButton(ci, "[ed] 抓取源", command=self._open_sources, kind="soft"))
         conf_row("智能分流规则（直连 / 代理清单）", RoundedButton(ci, "[ed] 规则", command=self._open_rules, kind="soft"))
 
-        tk.Label(ci, text="", bg=COLOR_CARD).pack(anchor="w", pady=2)
-        tk.Label(ci, text="· about", bg=COLOR_CARD, fg=COLOR_PRIMARY,
+        tk.Label(ci, text="", bg=theme.COLOR_CARD).pack(anchor="w", pady=2)
+        tk.Label(ci, text="· about", bg=theme.COLOR_CARD, fg=theme.COLOR_PRIMARY,
                  font=(FONT_FAMILY, 11, "bold")).pack(anchor="w", pady=(14, 8))
         tk.Label(ci, text=f"{APP_NAME} v{APP_VERSION} · terminal 风格代理工具（对齐 Android）",
-                 bg=COLOR_CARD, fg=COLOR_TEXT_MUTED,
+                 bg=theme.COLOR_CARD, fg=theme.COLOR_TEXT_MUTED,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(anchor="w")
         tk.Label(ci, text="支持 HTTP/HTTPS/SOCKS4/SOCKS5 与 SS/VMess/VLess/Trojan 加密节点订阅",
-                 bg=COLOR_CARD, fg=COLOR_TEXT_FAINT,
+                 bg=theme.COLOR_CARD, fg=theme.COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(anchor="w", pady=(4, 0))
-        tk.Label(ci, text="© 2026 知行工作室", bg=COLOR_CARD, fg=COLOR_TEXT_FAINT,
+        tk.Label(ci, text="© 2026 知行工作室", bg=theme.COLOR_CARD, fg=theme.COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE - 1)).pack(anchor="w", pady=(14, 0))
         return v
 
     def _vsep(self, parent):
-        tk.Frame(parent, width=1, bg=COLOR_BORDER).pack(side="left", fill="y", padx=10, pady=4)
+        tk.Frame(parent, width=1, bg=theme.COLOR_BORDER).pack(side="left", fill="y", padx=10, pady=4)
 
     # ---------------- 表格 ----------------
     def _on_sort(self, col):
@@ -467,14 +613,15 @@ class MainWindow:
                 proto_key = next((k for k, v in PROTOCOL_LABELS.items() if v == proto), proto)
                 if p["protocol"] != proto_key:
                     continue
-            if https_sel == "仅 HTTPS":
-                proto = p.get("protocol", "http")
-                if proto not in ENCRYPTED_PROTOCOLS and not p.get("https_ok"):
-                    continue
-            if https_sel == "仅 HTTP":
-                proto = p.get("protocol", "http")
-                if proto in ENCRYPTED_PROTOCOLS or p.get("https_ok"):
-                    continue
+            # 能力维度：支持HTTPS站点 = 加密协议 / HTTPS / 或验证通过 https_ok 的代理
+            #          仅明文 = 除以上之外（只适合普通 HTTP 明文站点，不能 CONNECT）
+            can_https = (p.get("protocol") in ENCRYPTED_PROTOCOLS
+                         or p.get("protocol") == "https"
+                         or bool(p.get("https_ok")))
+            if https_sel == "支持HTTPS站点" and not can_https:
+                continue
+            if https_sel == "仅明文" and can_https:
+                continue
             txt = _status_text(p)
             if st == "可用" and txt != "可用":
                 continue
@@ -588,11 +735,27 @@ class MainWindow:
             self._hover_row = None
 
     # ---------------- 抓取 ----------------
-    def _set_busy(self, on):
+    def _set_busy(self, on, for_check: bool = False):
+        """设置全局 busy 状态。for_check=True 时「验证」按钮变取消按钮。"""
         self._busy = on
-        for b in (self.btn_fetch, self.btn_check,
-                  self.btn_oneshot, self.btn_toggle):
+        # 抓取 / 一键 / 启动：验证中也禁用（避免重复触发）
+        for b in (self.btn_fetch, self.btn_oneshot, self.btn_toggle):
             b.set_enabled(not on)
+        # 验证按钮单独处理：
+        #   非验证 busy（如抓取中）→ 禁用
+        #   验证 busy → 可点（但切换成"取消验证"文本）
+        #   非 busy → 恢复默认
+        if on and not for_check:
+            self.btn_check.set_enabled(False)
+        elif on and for_check:
+            self.btn_check.set_enabled(True)
+            self.btn_check.set_text(f"{Icon.DELETE} 取消验证")
+            self.btn_check.kind = "danger"
+            self.btn_check.rebuild(f"{Icon.DELETE} 取消验证", kind="danger")
+        else:
+            self.btn_check.set_enabled(True)
+            self.btn_check.kind = "soft"
+            self.btn_check.rebuild(f"{Icon.CHECK} 验证全部", kind="soft")
 
     def _on_fetch(self):
         if not self.sources:
@@ -655,39 +818,57 @@ class MainWindow:
         messagebox.showerror("抓取异常", str(e))
 
     # ---------------- 验证 ----------------
+    def _on_check_btn_click(self):
+        """验证按钮点击：非 busy 时启动验证；验证中则触发取消。"""
+        if self._busy and self._check_cancel is not None and not self._check_cancel.is_set():
+            # 正在验证 → 点击 = 取消
+            self._check_cancel.set()
+            self.btn_check.set_enabled(False)
+            self.btn_check.set_text("取消中…")
+            self.prog_lbl.configure(text="正在取消，当前块跑完即停…")
+        else:
+            self._on_check_all()
+
     def _on_check_all(self):
-        self._check(self.proxies[:])
+        self._check(self.proxies[:], source_label="全部")
 
     def _on_check_selected(self):
         idxs = self._selected_indices()
         if not idxs:
             messagebox.showinfo("提示", "请先选中要验证的代理")
             return
-        self._check([self.proxies[i] for i in idxs])
+        self._check([self.proxies[i] for i in idxs], source_label="选中")
 
-    def _check(self, targets):
+    def _check(self, targets, source_label=""):
         if not targets:
             return
-        self._set_busy(True)
+        self._check_cancel.clear()
+        self._set_busy(True, for_check=True)
         self.prog_bar["maximum"] = len(targets)
         self.prog_bar["value"] = 0
         alive0 = sum(1 for p in self.proxies if p.get("alive"))
+        total = len(targets)
 
         def work():
+            cancelled = False
+            done_count = 0
             try:
-                def on_done(p, done, total):
+                def on_done(p, done, total_):
+                    nonlocal done_count
+                    done_count = done
                     try:
-                        self.root.after(0, lambda d=done, t=total: self._check_one_done(d, t))
+                        self.root.after(0, lambda d=done, t=total_: self._check_one_done(d, t))
                     except Exception:
                         pass
-                checker.check_batch(targets, on_done=on_done)
+                _, cancelled = checker.check_batch(
+                    targets, on_done=on_done, cancel_event=self._check_cancel)
                 try:
-                    self.root.after(0, self._check_done, alive0)
+                    self.root.after(0, self._check_done, alive0, cancelled, done_count, total, source_label)
                 except Exception:
                     self._set_busy(False)
             except Exception as e:
                 try:
-                    self.root.after(0, lambda: self._check_error(e))
+                    self.root.after(0, self._check_error, e)
                 except Exception:
                     self._set_busy(False)
 
@@ -696,23 +877,34 @@ class MainWindow:
     def _check_one_done(self, done, total):
         self.prog_bar["value"] = done
         alive = sum(1 for p in self.proxies if p.get("alive"))
-        self.prog_lbl.configure(text=f"验证 {done}/{total}")
+        if self._check_cancel.is_set():
+            # 取消后仍会收到已经 submit 的回调，不改文案避免闪烁
+            pass
+        else:
+            self.prog_lbl.configure(text=f"验证 {done}/{total}")
         self.stat_lbl.configure(text=f"已发现可用 {alive}")
         # 周期性刷新表格（每若干个刷新一次，避免卡顿）
         if done % 20 == 0 or done == total:
             self._refresh_table()
 
-    def _check_done(self, alive0):
+    def _check_done(self, alive0, cancelled, done, total, source_label=""):
         try:
             self._force_save()
             self._refresh_table()
             alive = sum(1 for p in self.proxies if p.get("alive"))
             self.prog_bar["value"] = 0
-            self.prog_lbl.configure(text=f"完成 · 可用 {alive}")
-            self.stat_lbl.configure(text=f"本次新增可用 {max(0, alive - alive0)}")
+            if cancelled:
+                self.prog_lbl.configure(
+                    text=f"已取消 · 已验证 {done}/{total} · 可用 {alive}" + (f" · {source_label}" if source_label else ""))
+                self.stat_lbl.configure(text=f"剩余 {max(0, total - done)} 未验证（标为未检测）")
+            else:
+                self.prog_lbl.configure(
+                    text=f"完成 · 可用 {alive}" + (f" · {source_label}" if source_label else ""))
+                self.stat_lbl.configure(text=f"本次新增可用 {max(0, alive - alive0)}")
         except Exception as e:
             messagebox.showerror("处理出错", str(e))
         finally:
+            self._check_cancel.clear()
             self._set_busy(False)
 
     def _check_error(self, e):
@@ -835,40 +1027,40 @@ class MainWindow:
     def _open_diagnostic(self):
         dlg = tk.Toplevel(self.root)
         dlg.title("连通性诊断")
-        dlg.configure(bg=COLOR_BG)
+        dlg.configure(bg=theme.COLOR_BG)
         dlg.transient(self.root)
         dlg.geometry(f"640x640+{self.root.winfo_rootx()+40}+{self.root.winfo_rooty()+40}")
 
-        wrap = tk.Frame(dlg, bg=COLOR_BG, padx=20, pady=18)
+        wrap = tk.Frame(dlg, bg=theme.COLOR_BG, padx=20, pady=18)
         wrap.pack(fill="both", expand=True)
-        tk.Label(wrap, text="连通性诊断", bg=COLOR_BG, fg=COLOR_TEXT,
+        tk.Label(wrap, text="连通性诊断", bg=theme.COLOR_BG, fg=theme.COLOR_TEXT,
                  font=(FONT_FAMILY, 13, "bold")).pack(anchor="w")
         tk.Label(wrap, text="自动逐项检查 · 给出修复建议",
-                 bg=COLOR_BG, fg=COLOR_TEXT_MUTED,
+                 bg=theme.COLOR_BG, fg=theme.COLOR_TEXT_MUTED,
                  font=(FONT_FAMILY, FONT_SIZE - 1)).pack(anchor="w", pady=(2, 12))
 
-        log_wrap = tk.Frame(wrap, bg=COLOR_CARD, highlightbackground=COLOR_BORDER,
+        log_wrap = tk.Frame(wrap, bg=theme.COLOR_CARD, highlightbackground=theme.COLOR_BORDER,
                             highlightthickness=1)
         log_wrap.pack(fill="both", expand=True)
-        log = tk.Text(log_wrap, bg=COLOR_CARD, fg=COLOR_TEXT,
+        log = tk.Text(log_wrap, bg=theme.COLOR_CARD, fg=theme.COLOR_TEXT,
                       font=(FONT_FAMILY, FONT_SIZE - 1),
                       relief="flat", wrap="word", padx=14, pady=12,
                       spacing1=3, spacing3=3)
         log.pack(side="left", fill="both", expand=True)
         # 彩色 tag
-        log.tag_configure("pass", foreground=COLOR_PRIMARY)
+        log.tag_configure("pass", foreground=theme.COLOR_PRIMARY)
         log.tag_configure("fail", foreground="#e74c3c")
         log.tag_configure("warn", foreground="#f39c12")
-        log.tag_configure("dim", foreground=COLOR_TEXT_MUTED)
-        log.tag_configure("h", foreground=COLOR_TEXT, font=(FONT_FAMILY, FONT_SIZE, "bold"))
+        log.tag_configure("dim", foreground=theme.COLOR_TEXT_MUTED)
+        log.tag_configure("h", foreground=theme.COLOR_TEXT, font=(FONT_FAMILY, FONT_SIZE, "bold"))
         vsb = ttk.Scrollbar(log_wrap, orient="vertical", command=log.yview)
         log.configure(yscrollcommand=vsb.set, state="disabled")
         vsb.pack(side="right", fill="y")
         dlg._log = log
 
-        btns = tk.Frame(wrap, bg=COLOR_BG)
+        btns = tk.Frame(wrap, bg=theme.COLOR_BG)
         btns.pack(fill="x", pady=(14, 0))
-        tip = tk.Label(btns, text="", bg=COLOR_BG, fg=COLOR_PRIMARY,
+        tip = tk.Label(btns, text="", bg=theme.COLOR_BG, fg=theme.COLOR_PRIMARY,
                        font=(FONT_FAMILY, FONT_SIZE))
         tip.pack(side="left")
         run_btn = RoundedButton(btns, "▶ 开始诊断",
@@ -1079,7 +1271,7 @@ class MainWindow:
         self.btn_toggle._fill = "#e5484d"
         self.btn_toggle._fill_hover = "#c93a3f"
         self.btn_toggle.itemconfigure(self.btn_toggle._shape, fill="#e5484d")
-        self.status.set_dot(COLOR_GOOD)
+        self.status.set_dot(theme.COLOR_GOOD)
         self.status.set("local", f"本地代理 {host}:{port} 运行中")
 
     def _stop_server(self):
@@ -1092,10 +1284,10 @@ class MainWindow:
             self.server = None
         self.btn_toggle.set_text(f"{Icon.START} 启动本地代理")
         self.btn_toggle.kind = "primary"
-        self.btn_toggle._fill = COLOR_PRIMARY
+        self.btn_toggle._fill = theme.COLOR_PRIMARY
         self.btn_toggle._fill_hover = "#2f5bd6"
-        self.btn_toggle.itemconfigure(self.btn_toggle._shape, fill=COLOR_PRIMARY)
-        self.status.set_dot(COLOR_TEXT_FAINT)
+        self.btn_toggle.itemconfigure(self.btn_toggle._shape, fill=theme.COLOR_PRIMARY)
+        self.status.set_dot(theme.COLOR_TEXT_FAINT)
         self.status.set("local", f"本地代理 {self.settings['local_host']}:{self.settings['local_port']} 未运行")
 
     def _on_toggle_system_proxy(self):
@@ -1143,9 +1335,9 @@ class MainWindow:
         else:
             self.btn_sys_proxy.set_text("系统代理：关")
             self.btn_sys_proxy.kind = "soft"
-            self.btn_sys_proxy._fill = COLOR_PRIMARY_SOFT
+            self.btn_sys_proxy._fill = theme.COLOR_PRIMARY_SOFT
             self.btn_sys_proxy._fill_hover = "#dbe5ff"
-            self.btn_sys_proxy.itemconfigure(self.btn_sys_proxy._shape, fill=COLOR_PRIMARY_SOFT)
+            self.btn_sys_proxy.itemconfigure(self.btn_sys_proxy._shape, fill=theme.COLOR_PRIMARY_SOFT)
 
     # ---------------- 设置 / 源 ----------------
     def _open_settings(self):
@@ -1156,7 +1348,10 @@ class MainWindow:
             self.settings.update(dlg.result)
             store.save_settings(self.settings)
             self.rotator.auto_switch = self.settings.get("auto_switch", True)
-            self.rotator.max_latency_ms = self.settings.get("max_latency_ms", 3000)
+            self.rotator.set_quality_gate(
+                max_latency_ms=self.settings.get("max_latency_ms", 3000),
+                min_speed_kbps=float(self.settings.get("min_speed_kbps", 0) or 0),
+            )
             if self.server and (old != (self.settings["local_host"], self.settings["local_port"])
                                 or self.server.auth_token != self.settings.get("auth_token", "")):
                 self._stop_server()
@@ -1171,6 +1366,16 @@ class MainWindow:
             store.save_sources(self.sources)
             messagebox.showinfo("已保存", f"共 {len(self.sources)} 个抓取源")
 
+    def _open_help(self):
+        """打开帮助 & 用法对话框（常驻入口）。"""
+        # 不允许多开：已有 HelpDialog 就聚焦到它
+        for t in self.root.winfo_children():
+            if isinstance(t, tk.Toplevel) and "帮助" in t.title():
+                t.deiconify()
+                t.focus_force()
+                t.lift()
+                return
+        HelpDialog(self.root)
     def _lock_selected(self):
         sel = self.tree.selection()
         if not sel:
@@ -1399,10 +1604,10 @@ class MainWindow:
         mode_label = self.mode_var.get() if hasattr(self, "mode_var") else "smart"
         if self.server:
             self.status.set("local", f"本地代理 {host}:{port} 运行中 · {mode_label}")
-            self.status.set_dot(COLOR_GOOD)
+            self.status.set_dot(theme.COLOR_GOOD)
         else:
             self.status.set("local", f"本地代理 {host}:{port} 未运行 · {mode_label}")
-            self.status.set_dot(COLOR_TEXT_FAINT)
+            self.status.set_dot(theme.COLOR_TEXT_FAINT)
         cur = self.rotator.current()
         if cur:
             lock_tag = " [锁定]" if self.rotator.is_locked() else ""
@@ -1420,10 +1625,10 @@ class MainWindow:
         host = self.settings["local_host"]
         port = self.settings["local_port"]
         if self.server:
-            dot, color = "●", COLOR_GOOD
+            dot, color = "●", theme.COLOR_GOOD
             local_txt = f"本地代理  {host}:{port}  运行中"
         else:
-            dot, color = "○", COLOR_TEXT_FAINT
+            dot, color = "○", theme.COLOR_TEXT_FAINT
             local_txt = f"本地代理  {host}:{port}  未运行"
         self.home_local_lbl.configure(text=f"{dot} {local_txt}", fg=color)
         cur = self.rotator.current()
@@ -1431,21 +1636,21 @@ class MainWindow:
             lock_tag = " [锁定]" if self.rotator.is_locked() else ""
             self.home_upstream_lbl.configure(
                 text=f"● 当前上游  {cur['ip']}:{cur['port']}  ({cur['protocol']}, "
-                     f"{cur.get('latency_ms', 0)}ms){lock_tag}", fg=COLOR_GOOD)
+                     f"{cur.get('latency_ms', 0)}ms){lock_tag}", fg=theme.COLOR_GOOD)
         else:
-            self.home_upstream_lbl.configure(text="○ 当前上游  无", fg=COLOR_TEXT_FAINT)
+            self.home_upstream_lbl.configure(text="○ 当前上游  无", fg=theme.COLOR_TEXT_FAINT)
         if self.server:
             st = self.server.stats
             alive = sum(1 for p in self.proxies if p.get("alive"))
             self.home_stats_lbl.configure(
                 text=f"● 统计  请求 {st['requests']} · 代理 {st.get('proxy',0)} · "
                      f"直连 {st.get('direct',0)} · 失败 {st['fail']} · 可用代理 {alive}",
-                fg=COLOR_TEXT_MUTED)
+                fg=theme.COLOR_TEXT_MUTED)
         else:
             alive = sum(1 for p in self.proxies if p.get("alive"))
             self.home_stats_lbl.configure(
                 text=f"○ 统计  代理 {len(self.proxies)} · 可用 {alive} · 本地代理未运行",
-                fg=COLOR_TEXT_MUTED)
+                fg=theme.COLOR_TEXT_MUTED)
 
     def _tick(self):
         if self.server:

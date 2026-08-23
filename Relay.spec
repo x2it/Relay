@@ -5,9 +5,8 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('config.py', '.'), ('core', 'core'), ('ui', 'ui'), ('data', 'data'),
-           ('assets/Relay.ico', 'assets')],
-    hiddenimports=[],
+    datas=[('assets/Relay.ico', 'assets')],
+    hiddenimports=['bs4', 'soupsieve', 'requests', 'urllib3'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -36,5 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='assets/Relay.ico',
+    icon=['assets/Relay.ico'],
 )

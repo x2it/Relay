@@ -2,6 +2,7 @@
 """Relay 主入口。"""
 import sys
 import os
+import ctypes
 
 # 让打包后能正确找到模块
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -9,6 +10,32 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import tkinter as tk
 from ui.main_window import MainWindow
 from config import APP_NAME
+
+
+# ---------- 单实例：Windows 命名互斥量 ----------
+_MUTEX_HANDLE = None
+
+
+def _claim_single_instance() -> bool:
+    """尝试占用单实例互斥量。
+
+    返回 True 表示本次是唯一实例；False 表示已有实例在运行。
+    handle 保存在模块全局，防止被 GC 释放导致互斥量失效。
+    """
+    global _MUTEX_HANDLE
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.CreateMutexW(None, False, "Local\\Relay_SingleInstance_Mutex")
+    if ctypes.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        kernel32.CloseHandle(handle)
+        return False
+    _MUTEX_HANDLE = handle
+    return True
+
+
+def _notify_already_running():
+    """已有实例时提示用户（无 tk 依赖）。"""
+    ctypes.windll.user32.MessageBoxW(
+        None, f"{APP_NAME} 已在运行，请勿重复打开。", APP_NAME, 0x40)
 
 
 def _set_window_icon(root: tk.Tk):
@@ -28,6 +55,11 @@ def _set_window_icon(root: tk.Tk):
 
 
 def main():
+    # 单实例：已有实例在运行时提示并退出
+    if not _claim_single_instance():
+        _notify_already_running()
+        return
+
     root = tk.Tk()
     try:
         # Windows 高 DPI 自适应

@@ -1,14 +1,30 @@
 # -*- coding: utf-8 -*-
 """Relay 桌面版 · 全局配置与常量（对齐 Android v1.4.1）。
 
-terminal 暗色主题 + 45 个内置开源数据源（A/B/C/D/E 五类，含加密节点订阅）。
+terminal 暗色主题 + 44 个内置开源数据源（A/B/C/D/E 五类，含加密节点订阅）。
+版本 v1.7.2：
+  · 修复「设置」对话框 pack+grid 混用父容器导致输入框不渲染（端口/Token/地址/延迟阈值/速度阈值均不可改）
+  · 设置内切换暗/浅色主题时，对话框与主窗口即时重绘（事件 <<RelayThemeChanged>>）
+  · 127.0.0.1:8888 看板：修复 HTTPS 支持 0 的计数 bug（代理协议默认支持 CONNECT）
+  · 看板新增：代理池健康度颜色标签、已验证/已抓取进度、Top5 候选延迟/速度/HTTPS 能力表、最近请求流水、自检清单
+  · 看板最近请求：每个分支统一 ctx 采集（host/via/ok/ms），finally 入队，面板可读
+版本 v1.7.1：
+  · 修复 smart 模式下本机/局域网地址被误转发给上游代理导致"访问不了本地"
+  · 应用启动自动拉起本地代理（127.0.0.1:8888），系统代理一键开关
+  · 新增单实例（命名互斥量，二开弹提示后退出）
+  · LIST 过滤栏两下拉维度正交：「协议」按类型 / 「能力」按能否打 HTTPS 站点
+  · 过滤栏全标签中文化，裸 Entry 统一成 RelayEntry 聚焦描边
+  · 选择标记统一为 [✓]/[ ]，导航保留 [HOME][LIST][CONF] terminal 风格
+  · 新增常驻「? 帮助」入口（本地代理用法、模式说明、自检清单）
+  · 验证过程中「验证全部」按钮变「− 取消验证」，分块 submit 快速取消
 """
 import os
 import sys
 
 # 应用基础信息
 APP_NAME = "Relay"
-APP_VERSION = "1.7.0"
+APP_VERSION = "1.7.2"
+APP_COPYRIGHT = "© 2026 知行工作室"
 
 # 数据目录：打包后放在 exe 同级，绿色版可携带
 if getattr(sys, "frozen", False):
@@ -62,10 +78,14 @@ COLOR_CARD = "#171B21"            # 卡片底：深灰
 COLOR_BAR = "#0F1216"
 COLOR_HOVER = "#1F242B"           # 次级底
 COLOR_PRIMARY = "#6B8AFF"         # 主色：蓝紫
-COLOR_PRIMARY_HOVER = "#5A7AFF"
+COLOR_PRIMARY_HOVER = "#5A7AFF"   # 主色按下/悬停
 COLOR_PRIMARY_SOFT = "#263258"    # 主色淡底
+COLOR_PRIMARY_DARK = "#2F5BD6"    # 主色深（按钮 hover 深一档）
+COLOR_ON_PRIMARY = "#FFFFFF"      # 主色上的文字
 COLOR_DANGER = "#D64545"
 COLOR_DANGER_HOVER = "#B93B3B"
+COLOR_DANGER_STRONG = "#E5484D"   # 停止/关闭等强警示红
+COLOR_DANGER_STRONG_HOVER = "#C93A3F"
 COLOR_TEXT = "#E7E9EC"            # 主文字：接近白
 COLOR_TEXT_MUTED = "#9AA2AC"      # 次文字：中性灰
 COLOR_TEXT_FAINT = "#6B7280"      # 更弱辅助
@@ -75,6 +95,78 @@ COLOR_ROW_HOVER = "#1F242B"
 COLOR_GOOD = "#2BA47A"            # 可用绿（降饱和）
 COLOR_BAD = "#D64545"             # 不可用红
 COLOR_WARN = "#D9822B"            # 警告橙
+
+# ---------- 主题系统：暗色(默认) / 浅色，运行时可切换 ----------
+_THEMES = {
+    "dark": {
+        "COLOR_BG": "#0F1216", "COLOR_CARD": "#171B21", "COLOR_BAR": "#0F1216",
+        "COLOR_HOVER": "#1F242B",
+        "COLOR_PRIMARY": "#6B8AFF", "COLOR_PRIMARY_HOVER": "#5A7AFF",
+        "COLOR_PRIMARY_SOFT": "#263258", "COLOR_PRIMARY_SOFT_HOVER": "#2E3D6E",
+        "COLOR_PRIMARY_DARK": "#2F5BD6", "COLOR_ON_PRIMARY": "#FFFFFF",
+        "COLOR_DANGER": "#D64545", "COLOR_DANGER_HOVER": "#B93B3B",
+        "COLOR_DANGER_STRONG": "#E5484D", "COLOR_DANGER_STRONG_HOVER": "#C93A3F",
+        "COLOR_TEXT": "#E7E9EC", "COLOR_TEXT_MUTED": "#9AA2AC",
+        "COLOR_TEXT_FAINT": "#6B7280", "COLOR_BORDER": "#2C323B",
+        "COLOR_ROW_ALT": "#171B21", "COLOR_ROW_HOVER": "#1F242B",
+        "COLOR_GOOD": "#2BA47A", "COLOR_BAD": "#D64545", "COLOR_WARN": "#D9822B",
+        "COLOR_ENTRY_BG": "#1B2027", "COLOR_MENU_BG": "#171B21",
+    },
+    "light": {
+        # 严格色阶（和 dark 语义一一对应，不混色）：
+        # BG=页面底（最浅）→ BAR=导航条/标题栏 → CARD=卡片容器（比 BG 白+细描边）→ HOVER=悬停行
+        "COLOR_BG": "#F7F9FC", "COLOR_CARD": "#FFFFFF", "COLOR_BAR": "#EEF2F7",
+        "COLOR_HOVER": "#EEF2F7",
+        # 主色：不刺眼的商务蓝（比 dark 降一档饱和，保持克制）
+        "COLOR_PRIMARY": "#3A63E0", "COLOR_PRIMARY_HOVER": "#2E53C9",
+        "COLOR_PRIMARY_SOFT": "#E1EAFF", "COLOR_PRIMARY_SOFT_HOVER": "#D1DDFD",
+        "COLOR_PRIMARY_DARK": "#2747B8", "COLOR_ON_PRIMARY": "#FFFFFF",
+        # 警示色：红/橙保持不调整（语义色要明确）
+        "COLOR_DANGER": "#D64545", "COLOR_DANGER_HOVER": "#B93B3B",
+        "COLOR_DANGER_STRONG": "#E5484D", "COLOR_DANGER_STRONG_HOVER": "#C93A3F",
+        # 文字：深→浅三级，严格单调递减（不做跳色）
+        "COLOR_TEXT": "#1A1F26", "COLOR_TEXT_MUTED": "#5B6472",
+        "COLOR_TEXT_FAINT": "#949DA9",
+        # 描边：只比 CARD 深半档（细腻不突出）
+        "COLOR_BORDER": "#E1E6EE",
+        "COLOR_ROW_ALT": "#F3F6FA", "COLOR_ROW_HOVER": "#EEF2F7",
+        "COLOR_GOOD": "#1E9E6A", "COLOR_BAD": "#D64545", "COLOR_WARN": "#D9822B",
+        "COLOR_ENTRY_BG": "#FFFFFF", "COLOR_MENU_BG": "#FFFFFF",
+    },
+}
+
+
+class _Theme:
+    """当前主题色板。切换后属性即时更新，UI 构建时读取最新值。
+
+    用法：from config import theme
+          theme.COLOR_BG / theme.set("light")
+    """
+    def __init__(self):
+        self._name = "dark"
+        self._apply("dark")
+
+    @property
+    def name(self):
+        return self._name
+
+    def set(self, name):
+        if name not in _THEMES:
+            name = "dark"
+        self._name = name
+        self._apply(name)
+
+    def _apply(self, name):
+        for k, v in _THEMES[name].items():
+            setattr(self, k, v)
+
+
+theme = _Theme()
+
+# 主题可选列表（供设置页展示）
+THEME_OPTIONS = ["dark", "light"]
+THEME_LABELS = {"dark": "暗色", "light": "浅色"}
+DEFAULT_THEME = "dark"
 
 FONT_FAMILY = "Consolas"          # 等宽：terminal 感
 FONT_SIZE = 10
