@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""代理抓取模块：并发抓取多源 + 失败重试。"""
+"""代理抓取模块：并发抓取多源 + 失败重试 + 镜像回退 + 状态回显。"""
 import re
 import time
 from typing import List, Dict, Callable, Optional
@@ -103,22 +103,59 @@ def _parse_geonode_json(text: str, protocol: str, source_name: str) -> List[Dict
     return items
 
 
+def _parse_subscription(text: str, protocol: str, source_name: str) -> List[Dict]:
+    """订阅源解析：Base64 整体解码 + ss/vmess/vless/trojan 分享链接逐行识别。"""
+    from core.protocols.links import parse_subscription as _ps
+    nodes = _ps(text)
+    for node in nodes:
+        node["source"] = source_name
+        node.setdefault("country", "")
+    return nodes
+
+
 _PARSERS = {
     "plain": _parse_plain,
     "html_table": _parse_html_table,
     "geonode_json": _parse_geonode_json,
+    "subscription": _parse_subscription,
 }
 
 
 def fetch_source(source: Dict) -> List[Dict]:
-    """抓取单个源。返回代理列表，失败返回空列表。"""
+    """抓取单个源。返回代理列表，失败返回空列表（已回写状态）。"""
     name = source.get("name", source.get("url", ""))
     url = source["url"]
     parser = source.get("parser", "plain")
     protocol = source.get("protocol", "http")
-    text = _get(url, timeout=FETCH_TIMEOUT)
+    timeout = int(source.get("timeout", FETCH_TIMEOUT) or FETCH_TIMEOUT) / 1000.0
+    # 主 URL + 镜像依次尝试
+    urls = [url] + list(source.get("mirrors") or [])
+    last_err = None
+    text = None
+    for u in urls:
+        try:
+            text = _get(u, timeout=timeout)
+            break
+        except Exception as e:
+            last_err = e
+    if text is None:
+        _write_status(source, "ERR", 0)
+        raise last_err if last_err else RuntimeError(f"{name} 抓取失败")
     fn = _PARSERS.get(parser, _parse_plain)
-    return fn(text, protocol, name)
+    try:
+        items = fn(text, protocol, name)
+    except Exception as e:
+        _write_status(source, "ERR", 0)
+        raise e
+    _write_status(source, "OK", len(items))
+    return items
+
+
+def _write_status(source: Dict, status: str, count: int):
+    """回写单源抓取状态（供 UI 回显）。"""
+    source["last_status"] = status
+    source["last_count"] = count
+    source["last_fetched_at"] = int(time.time())
 
 
 def _dedup(items: List[Dict]) -> List[Dict]:

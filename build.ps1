@@ -1,4 +1,4 @@
-# LiteProxy build script
+# Relay build script
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File build.ps1            # default: portable (onedir)
 #   powershell -ExecutionPolicy Bypass -File build.ps1 portable   # portable (onedir) - copy folder to run
@@ -26,27 +26,27 @@ function Invoke-PyInstaller {
 if ($Target -in 'portable','all') {
     Write-Host "`n==> Building portable (onedir)..." -ForegroundColor Cyan
     Invoke-PyInstaller -PyArgs @(
-        '--noconfirm','--clean','LiteProxy.spec'
+        '--noconfirm','--clean','Relay.spec'
     )
-    $portable = Join-Path $here 'dist\LiteProxy'
+    $portable = Join-Path $here 'dist\Relay'
     Write-Host "`n[OK] Portable build: $portable" -ForegroundColor Green
-    Write-Host "     Copy the whole LiteProxy folder to any machine, run LiteProxy.exe."
+    Write-Host "     Copy the whole Relay folder to any machine, run Relay.exe."
 }
 
 if ($Target -in 'installer','all') {
     Write-Host "`n==> Building single-file (onefile)..." -ForegroundColor Cyan
     Invoke-PyInstaller -PyArgs @(
         '--noconfirm','--clean','--windowed','--onefile',
-        '--name','LiteProxy',
-        '--icon','assets\LiteProxy.ico',
-        '--add-data','assets\LiteProxy.ico;assets',
+        '--name','Relay',
+        '--icon','assets\Relay.ico',
+        '--add-data','assets\Relay.ico;assets',
         '--hidden-import','bs4',
         '--hidden-import','soupsieve',
         '--hidden-import','requests',
         '--hidden-import','urllib3',
         'main.py'
     )
-    $onefile = Join-Path $here 'dist\LiteProxy.exe'
+    $onefile = Join-Path $here 'dist\Relay.exe'
     Write-Host "`n[OK] Single-file build: $onefile" -ForegroundColor Green
     Write-Host "     One exe to share. First launch is slower (self-extracting)."
 }

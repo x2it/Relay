@@ -247,7 +247,7 @@ def check_one(proxy: Dict, test_url: str = CHECK_TEST_URL,
         t0 = time.time()
         resp = requests.get("http://httpbin.org/ip", proxies=proxies,
                             timeout=timeout, verify=False,
-                            headers={"User-Agent": "LiteProxy/1.0"})
+                            headers={"User-Agent": "Relay/1.7"})
         # 严格检查：状态码正常 + 响应内容像是 httpbin 的 JSON
         if resp.status_code < 500:
             try:
@@ -281,7 +281,7 @@ def check_one(proxy: Dict, test_url: str = CHECK_TEST_URL,
             with requests.get(
                     "https://www.google.com/generate_204" if https_ok else "http://httpbin.org/ip",
                     proxies=proxies, timeout=timeout, stream=True, verify=False,
-                    headers={"User-Agent": "LiteProxy/1.0"}) as r:
+                    headers={"User-Agent": "Relay/1.7"}) as r:
                 downloaded = 0
                 for chunk in r.iter_content(8192):
                     downloaded += len(chunk)

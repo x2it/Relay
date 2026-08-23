@@ -1,30 +1,36 @@
 # -*- coding: utf-8 -*-
-"""用 PIL 精绘 LiteProxy 极简质感图标 → 多尺寸 ICO。
+"""用 PIL 精绘 Relay terminal 主题图标 → 多尺寸 ICO。
 
-设计理念：
-- 纯色渐变背景（深蓝→品牌蓝），圆角方形
-- 白色极简中继符号：两段弧线 + 三个圆点，表达"代理转发"
-- 无文字、无 emoji，仅靠几何图形传达专业感
+设计理念（对齐 app 暗色 terminal 主题）：
+- 深灰黑圆角方块背景（#0F1216），细描边 #2C323B 增加质感
+- 蓝紫主色（#6B8AFF）中继符号：三圆点 + 连线，表达"代理转发"
+- 右下角 terminal 光标块 ▍点缀，呼应 [HOME][LIST][CONF] 界面语言
+- 无文字、无 emoji，仅靠几何图形传达优雅极简感
 """
 import os
 from PIL import Image, ImageDraw, ImageFilter
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DST = os.path.join(HERE, "assets", "LiteProxy.ico")
+DST = os.path.join(HERE, "assets", "Relay.ico")
 
 SIZE = 1024
 RADIUS = int(SIZE * 0.22)
 
-# ---- 1. 渐变背景 ----
+# terminal 主题配色（对齐 config.py）
+BG_TOP = (15, 18, 22)        # #0F1216 页面底
+BG_BOT = (23, 27, 33)        # #171B21 卡片底
+BORDER = (44, 50, 59)        # #2C323B 描边
+PRIMARY = (107, 138, 255)    # #6B8AFF 主色蓝紫
+PRIMARY_DK = (38, 50, 88)    # #263258 主色淡底
+
+# ---- 1. 深色渐变背景 ----
 bg = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
 px = bg.load()
-top = (27, 42, 107)       # #1b2a6b 深蓝
-bot = (59, 108, 246)      # #3b6cf6 品牌蓝
 for y in range(SIZE):
     t = y / (SIZE - 1)
-    r = int(top[0] + (bot[0] - top[0]) * t)
-    g = int(top[1] + (bot[1] - top[1]) * t)
-    b = int(top[2] + (bot[2] - top[2]) * t)
+    r = int(BG_TOP[0] + (BG_BOT[0] - BG_TOP[0]) * t)
+    g = int(BG_TOP[1] + (BG_BOT[1] - BG_TOP[1]) * t)
+    b = int(BG_TOP[2] + (BG_BOT[2] - BG_TOP[2]) * t)
     for x in range(SIZE):
         px[x, y] = (r, g, b, 255)
 
@@ -36,47 +42,54 @@ md.rounded_rectangle([0, 0, SIZE - 1, SIZE - 1], radius=RADIUS, fill=255)
 out = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
 out.paste(bg, (0, 0), mask)
 
-# ---- 2. 中继符号 ----
 draw = ImageDraw.Draw(out)
-WHITE = (255, 255, 255, 255)
-WHITE_60 = (255, 255, 255, 160)
 cx, cy = SIZE // 2, SIZE // 2
 
-# 左侧弧线（代表"入口"流量）
-arc_box_l = [cx - 280, cy - 200, cx - 40, cy + 200]
-draw.arc(arc_box_l, start=140, end=220, fill=WHITE, width=28)
+# 细描边（terminal 边框感）
+draw.rounded_rectangle([6, 6, SIZE - 7, SIZE - 7], radius=RADIUS - 6,
+                       outline=BORDER, width=10)
 
-# 右侧弧线（代表"出口"流量）
-arc_box_r = [cx + 40, cy - 200, cx + 280, cy + 200]
-draw.arc(arc_box_r, start=-40, end=40, fill=WHITE, width=28)
+# ---- 2. 中继符号：左点 → 中点 → 右点 连线 ----
+# 连线（主线）
+line_w = 30
+y_off = -60  # 整体上移，给下方 terminal 点缀留空间
+pts = [(cx - 230, cy + y_off), (cx, cy + y_off - 110), (cx + 230, cy + y_off)]
+for i in range(len(pts) - 1):
+    draw.line([pts[i], pts[i + 1]], fill=PRIMARY, width=line_w)
 
-# 三个连接圆点
-dot_r = 36
-positions = [
-    (cx - 190, cy),   # 左节点
-    (cx, cy),          # 中心节点
-    (cx + 190, cy),   # 右节点
-]
-for px_, py_ in positions:
-    draw.ellipse([px_ - dot_r, py_ - dot_r, px_ + dot_r, py_ + dot_r],
-                 fill=WHITE)
+# 三圆点（实心主色）
+dot_r = 52
+for p in pts:
+    draw.ellipse([p[0] - dot_r, p[1] - dot_r, p[0] + dot_r, p[1] + dot_r],
+                 fill=PRIMARY)
 
-# 中心圆点略大，内嵌蓝色
-inner_r = 16
-draw.ellipse([cx - inner_r, cy - inner_r, cx + inner_r, cy + inner_r],
-             fill=(27, 42, 107, 255))
+# 中心点内嵌深色，空心质感
+inner_r = 22
+draw.ellipse([pts[1][0] - inner_r, pts[1][1] - inner_r,
+              pts[1][0] + inner_r, pts[1][1] + inner_r], fill=BG_BOT)
 
-# ---- 3. 轻微内发光增加质感 ----
-glow = out.filter(ImageFilter.GaussianBlur(radius=3))
+# ---- 3. terminal 光标块（右下角 ▍） ----
+cur_x, cur_y = cx + 150, cy + 260
+draw.rounded_rectangle([cur_x, cur_y, cur_x + 56, cur_y + 140],
+                       radius=14, fill=PRIMARY)
+
+# 光标左侧细横线（提示符感）
+draw.rounded_rectangle([cur_x - 200, cur_y + 55, cur_x - 80, cur_y + 85],
+                       radius=14, fill=PRIMARY_DK)
+draw.rounded_rectangle([cur_x - 200, cur_y + 110, cur_x - 120, cur_y + 132],
+                       radius=10, fill=PRIMARY_DK)
+
+# ---- 4. 轻微发光增加质感 ----
+glow = out.filter(ImageFilter.GaussianBlur(radius=4))
 final = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
 final.paste(out, (0, 0))
-final.paste(glow, (0, 0), Image.new("L", (SIZE, SIZE), 60))
+final.paste(glow, (0, 0), Image.new("L", (SIZE, SIZE), 50))
 
 # 重新应用圆角遮罩（防止发光溢出圆角）
 final2 = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
 final2.paste(final, (0, 0), mask)
 
-# ---- 4. 保存多尺寸 ICO ----
+# ---- 5. 保存多尺寸 ICO ----
 final2.save(DST, format="ICO", sizes=[(16, 16), (24, 24), (32, 32),
                                        (48, 48), (64, 64), (128, 128), (256, 256)])
 print("saved:", DST)

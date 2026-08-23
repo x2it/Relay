@@ -1,2 +1,2 @@
 # -*- coding: utf-8 -*-
-"""LiteProxy UI 包。"""
+"""Relay UI 包。"""

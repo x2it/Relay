@@ -465,13 +465,13 @@ class LocalProxyServer:
         if not self.auth_token:
             return True
         head = header_bytes.split(b"\r\n", 1)[0].decode("latin-1", "ignore")
-        # 简单校验 Proxy-Authorization 或自定义 X-LiteProxy-Token
+        # 简单校验 Proxy-Authorization 或自定义 X-Relay-Token
         for line in header_bytes.split(b"\r\n"):
             try:
                 line_s = line.decode("latin-1")
             except Exception:
                 continue
-            if line_s.lower().startswith("x-liteproxy-token:"):
+            if line_s.lower().startswith("x-relay-token:"):
                 if secrets.compare_digest(line_s.split(":", 1)[1].strip(),
                                            self.auth_token):
                     return True

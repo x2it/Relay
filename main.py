@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LiteProxy 主入口。"""
+"""Relay 主入口。"""
 import sys
 import os
 
@@ -15,9 +15,9 @@ def _set_window_icon(root: tk.Tk):
     """设置窗口图标（打包与开发环境均生效）。"""
     candidates = []
     if getattr(sys, "frozen", False):
-        candidates.append(os.path.join(sys._MEIPASS, "assets", "LiteProxy.ico"))
+        candidates.append(os.path.join(sys._MEIPASS, "assets", "Relay.ico"))
     candidates.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                   "assets", "LiteProxy.ico"))
+                                   "assets", "Relay.ico"))
     for c in candidates:
         if os.path.exists(c):
             try:

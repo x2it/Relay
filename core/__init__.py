@@ -1,2 +1,2 @@
 # -*- coding: utf-8 -*-
-"""LiteProxy 核心模块。"""
+"""Relay 核心模块。"""

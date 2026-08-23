@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LiteProxy 主窗口 —— 精致简约优雅。"""
+"""Relay 主窗口 —— terminal 暗色风格（对齐 Android）。"""
 import os
 import time
 import threading
@@ -11,8 +11,8 @@ from config import (APP_NAME, APP_VERSION, COLOR_BG, COLOR_CARD, COLOR_BAR,
                     COLOR_TEXT_FAINT, COLOR_PRIMARY, COLOR_PRIMARY_SOFT,
                     COLOR_GOOD, COLOR_BAD, COLOR_WARN, COLOR_ROW_ALT,
                     COLOR_ROW_HOVER, FONT_FAMILY, FONT_SIZE,
-                    DEFAULT_LOCAL_HOST, DEFAULT_LOCAL_PORT)
-from ui.style import apply_style, RoundedButton, StatusBar, Card, Icon
+                    DEFAULT_LOCAL_HOST, DEFAULT_LOCAL_PORT, MODE_LABELS)
+from ui.style import apply_style, RoundedButton, StatusBar, Card, Icon, NavItem, TermLine
 from ui.dialogs import SettingsDialog, SourcesDialog, SubscriptionDialog
 from core import store, fetcher, checker
 from core.local_proxy import LocalProxyServer, ProxyRotator, SystemProxyManager
@@ -112,52 +112,85 @@ class MainWindow:
 
     # ---------------- UI ----------------
     def _build_ui(self):
-        # 顶栏
-        top = tk.Frame(self.root, bg=COLOR_BAR, height=54)
+        # ---- 顶栏：品牌 + terminal 导航 + 模式/紧急恢复 ----
+        top = tk.Frame(self.root, bg=COLOR_BAR, height=48)
         top.pack(fill="x", side="top")
         top.pack_propagate(False)
-        # 底部细分割线
-        tk.Frame(top, bg=COLOR_BORDER, height=1).pack(fill="x", side="bottom")
+        TermLine(top).pack(fill="x", side="bottom")
 
         tk.Label(top, text=APP_NAME, bg=COLOR_BAR, fg=COLOR_PRIMARY,
-                 font=(FONT_FAMILY, 15, "bold")).pack(side="left", padx=(18, 0))
-        tk.Label(top, text=f"  v{APP_VERSION}  ·  轻量代理工具",
-                 bg=COLOR_BAR, fg=COLOR_TEXT_FAINT,
+                 font=(FONT_FAMILY, 14, "bold")).pack(side="left", padx=(18, 0))
+        tk.Label(top, text=f"  v{APP_VERSION}", bg=COLOR_BAR, fg=COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left")
 
-        # 紧急恢复（始终可见，小而醒目）
-        RoundedButton(top, f"{Icon.ALARM} 紧急恢复网络", command=self._on_emergency_restore,
-                      kind="danger").pack(side="right", padx=(6, 14), pady=12)
+        # terminal 导航：[HOME] [LIST] [CONF]
+        nav = tk.Frame(top, bg=COLOR_BAR)
+        nav.pack(side="left", padx=(28, 0))
+        self.nav_home = NavItem(nav, "HOME", selected=True, command=lambda: self._switch_view("home"))
+        self.nav_list = NavItem(nav, "LIST", command=lambda: self._switch_view("list"))
+        self.nav_conf = NavItem(nav, "CONF", command=lambda: self._switch_view("conf"))
+        for it in (self.nav_home, self.nav_list, self.nav_conf):
+            it.pack(side="left", padx=6)
 
-        RoundedButton(top, f"{Icon.SOURCE} 抓取源", command=self._open_sources,
-                      kind="ghost").pack(side="right", padx=6, pady=12)
-        RoundedButton(top, f"{Icon.SETTINGS} 设置", command=self._open_settings,
-                      kind="ghost").pack(side="right", padx=6, pady=12)
-        RoundedButton(top, "规则", command=self._open_rules,
-                      kind="ghost").pack(side="right", padx=6, pady=12)
+        # 紧急恢复（始终可见，小而醒目）
+        RoundedButton(top, f"{Icon.ALARM} 恢复", command=self._on_emergency_restore,
+                      kind="danger").pack(side="right", padx=(6, 14), pady=9)
 
         # 模式切换
-        tk.Label(top, text="模式", bg=COLOR_BAR, fg=COLOR_TEXT_FAINT,
+        tk.Label(top, text="mode", bg=COLOR_BAR, fg=COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="right", padx=(0, 0))
-        from config import MODE_LABELS
         self.mode_var = tk.StringVar(
-            value=MODE_LABELS.get(self.settings.get("mode", "smart"), "智能分流"))
-        cb_mode = ttk.Combobox(top, textvariable=self.mode_var, width=10,
+            value=MODE_LABELS.get(self.settings.get("mode", "smart"), "smart"))
+        cb_mode = ttk.Combobox(top, textvariable=self.mode_var, width=8,
                                state="readonly", values=list(MODE_LABELS.values()))
-        cb_mode.pack(side="right", padx=(6, 8), pady=12)
+        cb_mode.pack(side="right", padx=(6, 8), pady=9)
         cb_mode.bind("<<ComboboxSelected>>", lambda e: self._on_mode_change())
 
-        # 主体内容区（带边距）
+        # ---- 内容区：三视图容器 ----
         content = tk.Frame(self.root, bg=COLOR_BG)
-        content.pack(fill="both", expand=True, padx=16, pady=12)
+        content.pack(fill="both", expand=True)
 
-        # 工具栏卡片
-        toolbar = Card(content)
+        self._view_home = self._build_view_home(content)
+        self._view_list = self._build_view_list(content)
+        self._view_conf = self._build_view_conf(content)
+
+        self._switch_view("home")
+
+        # 状态栏
+        self.status = StatusBar(self.root)
+        self.status.pack(side="bottom", fill="x")
+        TermLine(self.root).pack(side="bottom", fill="x")
+        self.status.set("local", f"本地代理 {self.settings['local_host']}:{self.settings['local_port']} 未运行")
+        self.status.set("upstream", "当前上游 无")
+        self.status.set("stats", "请求 0 · 成功 0")
+        self.status.set("count", "代理 0")
+
+        self._tick()
+
+    # ---------- 视图切换 ----------
+    def _switch_view(self, name):
+        for key, w in (("home", self._view_home), ("list", self._view_list),
+                       ("conf", self._view_conf)):
+            w.pack_forget()
+        getattr(self, f"_view_{name}").pack(fill="both", expand=True)
+        self.nav_home.set_selected(name == "home")
+        self.nav_list.set_selected(name == "list")
+        self.nav_conf.set_selected(name == "conf")
+        if name == "list":
+            self._refresh_table()
+
+    # ============ HOME 视图：总览 + 主流程 ============
+    def _build_view_home(self, parent):
+        v = tk.Frame(parent, bg=COLOR_BG)
+        pad = tk.Frame(v, bg=COLOR_BG)
+        pad.pack(fill="both", expand=True, padx=16, pady=12)
+
+        # 主流程操作卡
+        toolbar = Card(pad)
         toolbar.pack(fill="x")
-        tb = tk.Frame(toolbar, bg=COLOR_CARD, padx=14, pady=10)
+        tb = tk.Frame(toolbar, bg=COLOR_CARD, padx=14, pady=12)
         tb.pack(fill="x")
 
-        # 第一行：主流程操作
         row1 = tk.Frame(tb, bg=COLOR_CARD)
         row1.pack(fill="x")
         self.btn_fetch = RoundedButton(row1, f"{Icon.FETCH} 抓取代理", command=self._on_fetch)
@@ -172,7 +205,6 @@ class MainWindow:
         self.btn_toggle.pack(side="left", padx=6)
         RoundedButton(row1, "诊断", command=self._open_diagnostic, kind="ghost").pack(side="left", padx=6)
 
-        # 第二行：数据管理 + 系统代理
         row2 = tk.Frame(tb, bg=COLOR_CARD)
         row2.pack(fill="x", pady=(10, 0))
         RoundedButton(row2, f"{Icon.IMPORT} 导入", command=self._on_import, kind="ghost").pack(side="left", padx=(0, 6))
@@ -182,12 +214,11 @@ class MainWindow:
         self._vsep(row2)
         RoundedButton(row2, f"{Icon.CLEAR} 清空不可用", command=self._on_clear_dead, kind="ghost").pack(side="left", padx=6)
         RoundedButton(row2, f"{Icon.DELETE} 删除选中", command=self._on_delete, kind="danger").pack(side="left", padx=6)
-        # 系统代理开关（右对齐，独立分组）
         self.btn_sys_proxy = RoundedButton(row2, f"系统代理：关", command=self._on_toggle_system_proxy, kind="soft")
         self.btn_sys_proxy.pack(side="right", padx=(6, 0))
 
         # 进程可视化行
-        prog = Card(content)
+        prog = Card(pad)
         prog.pack(fill="x", pady=(10, 0))
         prog_inner = tk.Frame(prog, bg=COLOR_CARD, padx=14, pady=10)
         prog_inner.pack(fill="x")
@@ -202,12 +233,42 @@ class MainWindow:
                                  fg=COLOR_TEXT_FAINT, font=(FONT_FAMILY, FONT_SIZE))
         self.stat_lbl.pack(side="right")
 
+        # 总览信息：本地代理 / 上游 / 统计
+        over = Card(pad)
+        over.pack(fill="both", expand=True, pady=(10, 0))
+        oi = tk.Frame(over, bg=COLOR_CARD, padx=18, pady=16)
+        oi.pack(fill="both", expand=True)
+        tk.Label(oi, text="· status", bg=COLOR_CARD, fg=COLOR_PRIMARY,
+                 font=(FONT_FAMILY, 11, "bold")).pack(anchor="w", pady=(0, 10))
+
+        self.home_local_lbl = tk.Label(oi, text="", bg=COLOR_CARD, fg=COLOR_TEXT_MUTED,
+                                       font=(FONT_FAMILY, FONT_SIZE + 1))
+        self.home_local_lbl.pack(anchor="w", pady=3)
+        self.home_upstream_lbl = tk.Label(oi, text="", bg=COLOR_CARD, fg=COLOR_TEXT_MUTED,
+                                          font=(FONT_FAMILY, FONT_SIZE + 1))
+        self.home_upstream_lbl.pack(anchor="w", pady=3)
+        self.home_stats_lbl = tk.Label(oi, text="", bg=COLOR_CARD, fg=COLOR_TEXT_MUTED,
+                                       font=(FONT_FAMILY, FONT_SIZE + 1))
+        self.home_stats_lbl.pack(anchor="w", pady=3)
+        tk.Label(oi, text="", bg=COLOR_CARD).pack(anchor="w")
+        self.home_tip = tk.Label(oi, text="一键流程：抓取 → 验证 → 启动本地代理，浏览器代理设为 127.0.0.1:8888 即可",
+                                 bg=COLOR_CARD, fg=COLOR_TEXT_FAINT,
+                                 font=(FONT_FAMILY, FONT_SIZE - 1))
+        self.home_tip.pack(anchor="w", pady=(8, 0))
+        return v
+
+    # ============ LIST 视图：代理表 ============
+    def _build_view_list(self, parent):
+        v = tk.Frame(parent, bg=COLOR_BG)
+        pad = tk.Frame(v, bg=COLOR_BG)
+        pad.pack(fill="both", expand=True, padx=16, pady=12)
+
         # 过滤栏
-        filt = tk.Frame(content, bg=COLOR_BG)
-        filt.pack(fill="x", pady=(12, 8))
+        filt = tk.Frame(pad, bg=COLOR_BG)
+        filt.pack(fill="x", pady=(0, 8))
         self.search_var = tk.StringVar()
         self.search_var.trace_add("write", lambda *_: self._refresh_table())
-        tk.Label(filt, text="搜索", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
+        tk.Label(filt, text="search", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left")
         se = tk.Entry(filt, textvariable=self.search_var, width=22,
                       relief="solid", bd=1, highlightthickness=0,
@@ -215,7 +276,7 @@ class MainWindow:
         se.pack(side="left", padx=(8, 16))
         se.bind("<Return>", lambda e: self._refresh_table())
 
-        tk.Label(filt, text="协议", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
+        tk.Label(filt, text="protocol", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left")
         self.proto_var = tk.StringVar(value="全部")
         proto_choices = ["全部"] + [PROTOCOL_LABELS.get(k, k) for k in ALL_PROTOCOLS]
@@ -224,7 +285,7 @@ class MainWindow:
         cb_proto.pack(side="left", padx=(4, 12))
         cb_proto.bind("<<ComboboxSelected>>", lambda e: self._refresh_table())
 
-        tk.Label(filt, text="HTTPS", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
+        tk.Label(filt, text="https", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left")
         self.https_var = tk.StringVar(value="全部")
         cb_https = ttk.Combobox(filt, textvariable=self.https_var, width=8, state="readonly",
@@ -232,7 +293,7 @@ class MainWindow:
         cb_https.pack(side="left", padx=(4, 12))
         cb_https.bind("<<ComboboxSelected>>", lambda e: self._refresh_table())
 
-        tk.Label(filt, text="状态", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
+        tk.Label(filt, text="status", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left")
         self.status_var = tk.StringVar(value="全部")
         cb_status = ttk.Combobox(filt, textvariable=self.status_var, width=8, state="readonly",
@@ -240,24 +301,23 @@ class MainWindow:
         cb_status.pack(side="left", padx=(4, 12))
         cb_status.bind("<<ComboboxSelected>>", lambda e: self._refresh_table())
 
-        # 数值范围筛选：延迟上限 / 速度下限
         self._vsep(filt)
-        tk.Label(filt, text="延迟 ≤", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
+        tk.Label(filt, text="lat≤", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left")
         self.max_lat_var = tk.StringVar()
         self.max_lat_var.trace_add("write", lambda *_: self._refresh_table())
-        e_lat = tk.Entry(filt, textvariable=self.max_lat_var, width=7,
+        e_lat = tk.Entry(filt, textvariable=self.max_lat_var, width=6,
                          relief="solid", bd=1, highlightthickness=0,
                          font=(FONT_FAMILY, FONT_SIZE), fg=COLOR_TEXT)
         e_lat.pack(side="left", padx=(4, 2))
         tk.Label(filt, text="ms", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left", padx=(0, 12))
 
-        tk.Label(filt, text="速度 ≥", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
+        tk.Label(filt, text="spd≥", bg=COLOR_BG, fg=COLOR_TEXT_FAINT,
                  font=(FONT_FAMILY, FONT_SIZE)).pack(side="left")
         self.min_spd_var = tk.StringVar()
         self.min_spd_var.trace_add("write", lambda *_: self._refresh_table())
-        e_spd = tk.Entry(filt, textvariable=self.min_spd_var, width=7,
+        e_spd = tk.Entry(filt, textvariable=self.min_spd_var, width=6,
                          relief="solid", bd=1, highlightthickness=0,
                          font=(FONT_FAMILY, FONT_SIZE), fg=COLOR_TEXT)
         e_spd.pack(side="left", padx=(4, 2))
@@ -269,13 +329,12 @@ class MainWindow:
         self.count_lbl.pack(side="right")
 
         # 表格卡片
-        table_card = Card(content)
+        table_card = Card(pad)
         table_card.pack(fill="both", expand=True)
         tw = tk.Frame(table_card, bg=COLOR_CARD)
         tw.pack(fill="both", expand=True, padx=1, pady=1)
 
         self.tree = ttk.Treeview(tw, columns=COLUMNS, show="headings")
-        # 可排序的列（除状态点和最后检测时间外都可排）
         sortable = {"idx", "ip", "port", "protocol", "country", "anonymity",
                     "latency", "speed", "source"}
         for c in COLUMNS:
@@ -286,7 +345,6 @@ class MainWindow:
                 self.tree.heading(c, text=COL_HEADERS[c])
             anchor = "e" if c in ("idx", "port", "latency", "speed") else "w"
             self.tree.column(c, width=COL_WIDTH[c], anchor=anchor, stretch=True)
-        # 行状态标签
         self.tree.tag_configure("ok", foreground=COLOR_GOOD)
         self.tree.tag_configure("bad", foreground=COLOR_BAD)
         self.tree.tag_configure("alt", background=COLOR_ROW_ALT)
@@ -317,18 +375,46 @@ class MainWindow:
         self.menu.add_command(label=f"{Icon.CHECK} 单独验证", command=self._on_check_selected)
         self.menu.add_command(label=f"{Icon.COPY} 复制 ip:port", command=self._copy_selected)
         self.menu.add_separator()
-        self.menu.add_command(label=f"{Icon.DELETE} 删除", command=self._on_delete)
+        self.menu.add_command(label=f"{Icon.OP_REMOVE} 删除", command=self._on_delete)
+        return v
 
-        # 状态栏
-        self.status = StatusBar(self.root)
-        self.status.pack(side="bottom", fill="x")
-        tk.Frame(self.root, bg=COLOR_BORDER, height=1).pack(side="bottom", fill="x")
-        self.status.set("local", f"本地代理 {self.settings['local_host']}:{self.settings['local_port']} 未运行")
-        self.status.set("upstream", "当前上游 无")
-        self.status.set("stats", "请求 0 · 成功 0")
-        self.status.set("count", "代理 0")
+    # ============ CONF 视图：设置入口 ============
+    def _build_view_conf(self, parent):
+        v = tk.Frame(parent, bg=COLOR_BG)
+        pad = tk.Frame(v, bg=COLOR_BG)
+        pad.pack(fill="both", expand=True, padx=16, pady=12)
 
-        self._tick()
+        card = Card(pad)
+        card.pack(fill="both", expand=True)
+        ci = tk.Frame(card, bg=COLOR_CARD, padx=18, pady=16)
+        ci.pack(fill="both", expand=True)
+
+        tk.Label(ci, text="· config", bg=COLOR_CARD, fg=COLOR_PRIMARY,
+                 font=(FONT_FAMILY, 11, "bold")).pack(anchor="w", pady=(0, 14))
+
+        def conf_row(label, btn):
+            r = tk.Frame(ci, bg=COLOR_CARD)
+            r.pack(fill="x", pady=6)
+            tk.Label(r, text=label, bg=COLOR_CARD, fg=COLOR_TEXT_MUTED,
+                     font=(FONT_FAMILY, FONT_SIZE + 1)).pack(side="left", padx=(0, 18))
+            btn.pack(side="right")
+
+        conf_row("本地代理监听 / Token / 阈值", RoundedButton(ci, "[ed] 设置", command=self._open_settings, kind="soft"))
+        conf_row("抓取源管理（A/B/C/D/E + 自定义）", RoundedButton(ci, "[ed] 抓取源", command=self._open_sources, kind="soft"))
+        conf_row("智能分流规则（直连 / 代理清单）", RoundedButton(ci, "[ed] 规则", command=self._open_rules, kind="soft"))
+
+        tk.Label(ci, text="", bg=COLOR_CARD).pack(anchor="w", pady=2)
+        tk.Label(ci, text="· about", bg=COLOR_CARD, fg=COLOR_PRIMARY,
+                 font=(FONT_FAMILY, 11, "bold")).pack(anchor="w", pady=(14, 8))
+        tk.Label(ci, text=f"{APP_NAME} v{APP_VERSION} · terminal 风格代理工具（对齐 Android）",
+                 bg=COLOR_CARD, fg=COLOR_TEXT_MUTED,
+                 font=(FONT_FAMILY, FONT_SIZE)).pack(anchor="w")
+        tk.Label(ci, text="支持 HTTP/HTTPS/SOCKS4/SOCKS5 与 SS/VMess/VLess/Trojan 加密节点订阅",
+                 bg=COLOR_CARD, fg=COLOR_TEXT_FAINT,
+                 font=(FONT_FAMILY, FONT_SIZE)).pack(anchor="w", pady=(4, 0))
+        tk.Label(ci, text="© 2026 知行工作室", bg=COLOR_CARD, fg=COLOR_TEXT_FAINT,
+                 font=(FONT_FAMILY, FONT_SIZE - 1)).pack(anchor="w", pady=(14, 0))
+        return v
 
     def _vsep(self, parent):
         tk.Frame(parent, width=1, bg=COLOR_BORDER).pack(side="left", fill="y", padx=10, pady=4)
@@ -551,6 +637,7 @@ class MainWindow:
     def _fetch_done(self, items):
         try:
             self.proxies, added = store.merge_proxies(self.proxies, items)
+            store.save_sources(self.sources)   # 回写抓取状态
             self._force_save()
             self._refresh_table()
             self.prog_bar["value"] = 0
@@ -679,6 +766,7 @@ class MainWindow:
     def _fetch_done_cb(self, items, cb):
         try:
             self.proxies, added = store.merge_proxies(self.proxies, items)
+            store.save_sources(self.sources)   # 回写抓取状态
             self._force_save()
             self._refresh_table()
             self.prog_lbl.configure(text=f"抓取完成 · 新增 {added}")
@@ -927,7 +1015,7 @@ class MainWindow:
             try:
                 s = socket.create_connection((host, port), timeout=5)
                 s.settimeout(10)
-                s.sendall(b"GET /connect-test HTTP/1.1\r\nHost: liteproxy.test\r\nProxy-Connection: close\r\n\r\n")
+                s.sendall(b"GET /connect-test HTTP/1.1\r\nHost: relay.test\r\nProxy-Connection: close\r\n\r\n")
                 try:
                     resp = s.recv(2048)
                 except Exception:
@@ -1308,7 +1396,7 @@ class MainWindow:
     def _update_status_bar(self):
         host = self.settings["local_host"]
         port = self.settings["local_port"]
-        mode_label = self.mode_var.get() if hasattr(self, "mode_var") else "智能分流"
+        mode_label = self.mode_var.get() if hasattr(self, "mode_var") else "smart"
         if self.server:
             self.status.set("local", f"本地代理 {host}:{port} 运行中 · {mode_label}")
             self.status.set_dot(COLOR_GOOD)
@@ -1325,10 +1413,43 @@ class MainWindow:
             self.status.set("upstream", "当前上游 无")
         self._update_count()
 
+    def _update_home_overview(self):
+        """HOME 视图总览标签：本地代理 / 上游 / 统计。"""
+        if not hasattr(self, "home_local_lbl"):
+            return
+        host = self.settings["local_host"]
+        port = self.settings["local_port"]
+        if self.server:
+            dot, color = "●", COLOR_GOOD
+            local_txt = f"本地代理  {host}:{port}  运行中"
+        else:
+            dot, color = "○", COLOR_TEXT_FAINT
+            local_txt = f"本地代理  {host}:{port}  未运行"
+        self.home_local_lbl.configure(text=f"{dot} {local_txt}", fg=color)
+        cur = self.rotator.current()
+        if cur:
+            lock_tag = " [锁定]" if self.rotator.is_locked() else ""
+            self.home_upstream_lbl.configure(
+                text=f"● 当前上游  {cur['ip']}:{cur['port']}  ({cur['protocol']}, "
+                     f"{cur.get('latency_ms', 0)}ms){lock_tag}", fg=COLOR_GOOD)
+        else:
+            self.home_upstream_lbl.configure(text="○ 当前上游  无", fg=COLOR_TEXT_FAINT)
+        if self.server:
+            st = self.server.stats
+            alive = sum(1 for p in self.proxies if p.get("alive"))
+            self.home_stats_lbl.configure(
+                text=f"● 统计  请求 {st['requests']} · 代理 {st.get('proxy',0)} · "
+                     f"直连 {st.get('direct',0)} · 失败 {st['fail']} · 可用代理 {alive}",
+                fg=COLOR_TEXT_MUTED)
+        else:
+            alive = sum(1 for p in self.proxies if p.get("alive"))
+            self.home_stats_lbl.configure(
+                text=f"○ 统计  代理 {len(self.proxies)} · 可用 {alive} · 本地代理未运行",
+                fg=COLOR_TEXT_MUTED)
+
     def _tick(self):
         if self.server:
             st = self.server.stats
-            # 实时分流计数：代理 N · 直连 N · 失败 N
             self.status.set("stats",
                             f"请求 {st['requests']} · 代理 {st.get('proxy',0)} · "
                             f"直连 {st.get('direct',0)} · 失败 {st['fail']}")
@@ -1343,6 +1464,7 @@ class MainWindow:
                 self.status.set("upstream", "⚠ 无可用上游，请先抓取并验证代理")
             else:
                 self.status.set("upstream", f"可用 {alive} 个，等待选择上游…")
+        self._update_home_overview()
         self.root.after(1000, self._tick)
 
     def on_close(self):

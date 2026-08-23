@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
-"""全局配置与常量。"""
+"""Relay 桌面版 · 全局配置与常量（对齐 Android v1.4.1）。
+
+terminal 暗色主题 + 45 个内置开源数据源（A/B/C/D/E 五类，含加密节点订阅）。
+"""
 import os
 import sys
 
 # 应用基础信息
-APP_NAME = "LiteProxy"
-APP_VERSION = "1.6.0"
+APP_NAME = "Relay"
+APP_VERSION = "1.7.0"
 
 # 数据目录：打包后放在 exe 同级，绿色版可携带
 if getattr(sys, "frozen", False):
@@ -53,147 +56,187 @@ FETCH_TIMEOUT = 60           # 单源抓取超时(秒) - CDN下载大文件需�
 FETCH_WORKERS = 6            # 并发抓取源数
 FETCH_RETRIES = 2            # 单源失败重试次数
 
-# 默认抓取源（优先使用国内可访问的 jsdelivr CDN 镜像）
+# ---------- terminal 暗色主题（对齐 Android Theme.kt） ----------
+COLOR_BG = "#0F1216"              # 页面底：深灰黑
+COLOR_CARD = "#171B21"            # 卡片底：深灰
+COLOR_BAR = "#0F1216"
+COLOR_HOVER = "#1F242B"           # 次级底
+COLOR_PRIMARY = "#6B8AFF"         # 主色：蓝紫
+COLOR_PRIMARY_HOVER = "#5A7AFF"
+COLOR_PRIMARY_SOFT = "#263258"    # 主色淡底
+COLOR_DANGER = "#D64545"
+COLOR_DANGER_HOVER = "#B93B3B"
+COLOR_TEXT = "#E7E9EC"            # 主文字：接近白
+COLOR_TEXT_MUTED = "#9AA2AC"      # 次文字：中性灰
+COLOR_TEXT_FAINT = "#6B7280"      # 更弱辅助
+COLOR_BORDER = "#2C323B"          # 描边：深灰
+COLOR_ROW_ALT = "#171B21"
+COLOR_ROW_HOVER = "#1F242B"
+COLOR_GOOD = "#2BA47A"            # 可用绿（降饱和）
+COLOR_BAD = "#D64545"             # 不可用红
+COLOR_WARN = "#D9822B"            # 警告橙
+
+FONT_FAMILY = "Consolas"          # 等宽：terminal 感
+FONT_SIZE = 10
+
+
+# ---------- 内置数据源 ----------
+def _src(name, url, parser="plain", protocol="http", category="B",
+         mirrors=None, timeout=20_000):
+    return {
+        "name": name, "url": url, "parser": parser, "protocol": protocol,
+        "category": category, "mirrors": mirrors or [],
+        "timeout": timeout, "enabled": True,
+        "last_status": "N", "last_count": 0, "last_fetched_at": 0,
+    }
+
+
+def _gh_mirrors(url):
+    """GitHub RAW 镜像：gh-proxy.com / ghfast.top（与 Android 一致）。"""
+    origin = "https://raw.githubusercontent.com/"
+    if not url.startswith(origin):
+        return []
+    suffix = url[len(origin):]
+    return [
+        "https://gh-proxy.com/https://raw.githubusercontent.com/" + suffix,
+        "https://ghfast.top/https://raw.githubusercontent.com/" + suffix,
+    ]
+
+
+_GH = "https://raw.githubusercontent.com/"
+
+# 45 个内置开源数据源（A/B/C/D/E 五类，覆盖 HTTP/HTTPS/SOCKS4/SOCKS5 + 加密节点订阅）
 DEFAULT_SOURCES = [
-    {
-        "name": "TheSpeedX-HTTP (CDN)",
-        "url": "https://cdn.jsdelivr.net/gh/TheSpeedX/PROXY-List@master/http.txt",
-        "parser": "plain",
-        "protocol": "http",
-    },
-    {
-        "name": "TheSpeedX-SOCKS5 (CDN)",
-        "url": "https://cdn.jsdelivr.net/gh/TheSpeedX/PROXY-List@master/socks5.txt",
-        "parser": "plain",
-        "protocol": "socks5",
-    },
-    {
-        "name": "Monosans-HTTP (CDN)",
-        "url": "https://cdn.jsdelivr.net/gh/monosans/proxy-list@main/proxies/http.txt",
-        "parser": "plain",
-        "protocol": "http",
-    },
-    {
-        "name": "Monosans-SOCKS5 (CDN)",
-        "url": "https://cdn.jsdelivr.net/gh/monosans/proxy-list@main/proxies/socks5.txt",
-        "parser": "plain",
-        "protocol": "socks5",
-    },
-    {
-        "name": "Clarketm-HTTP (CDN)",
-        "url": "https://cdn.jsdelivr.net/gh/clarketm/proxy-list@master/proxy-list-raw.txt",
-        "parser": "plain",
-        "protocol": "http",
-    },
-    {
-        "name": "Roosterkid-HTTP (CDN)",
-        "url": "https://cdn.jsdelivr.net/gh/roosterkid/openproxylist@main/HTTPS_RAW.txt",
-        "parser": "plain",
-        "protocol": "https",
-    },
-    {
-        "name": "ProxyScrape-HTTP",
-        "url": "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all",
-        "parser": "plain",
-        "protocol": "http",
-    },
-    {
-        "name": "ProxyScrape-SOCKS5",
-        "url": "https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks5&timeout=10000&country=all",
-        "parser": "plain",
-        "protocol": "socks5",
-    },
-    {
-        "name": "Thordata-HTTP",
-        "url": "https://raw.githubusercontent.com/Thordata/awesome-free-proxy-list/main/proxies/http.txt",
-        "parser": "plain",
-        "protocol": "http",
-    },
-    {
-        "name": "Thordata-SOCKS5",
-        "url": "https://raw.githubusercontent.com/Thordata/awesome-free-proxy-list/main/proxies/socks5.txt",
-        "parser": "plain",
-        "protocol": "socks5",
-    },
-    {
-        "name": "Thordata-TopHTTP",
-        "url": "https://raw.githubusercontent.com/Thordata/awesome-free-proxy-list/main/proxies/top-http.txt",
-        "parser": "plain",
-        "protocol": "http",
-    },
-    {
-        "name": "jetkai-HTTP",
-        "url": "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-HTTP.txt",
-        "parser": "plain",
-        "protocol": "http",
-    },
-    {
-        "name": "jetkai-SOCKS5",
-        "url": "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-SOCKS5.txt",
-        "parser": "plain",
-        "protocol": "socks5",
-    },
-    {
-        "name": "Proxifly-HTTP",
-        "url": "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/http/data.txt",
-        "parser": "plain",
-        "protocol": "http",
-    },
-    {
-        "name": "Proxifly-SOCKS5",
-        "url": "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/socks5/data.txt",
-        "parser": "plain",
-        "protocol": "socks5",
-    },
-    {
-        "name": "VPSLab-HTTP",
-        "url": "https://raw.githubusercontent.com/VPSLabCloud/VPSLab-Free-Proxy-List/main/http_all.txt",
-        "parser": "plain",
-        "protocol": "http",
-    },
-    {
-        "name": "VPSLab-SOCKS5",
-        "url": "https://raw.githubusercontent.com/VPSLabCloud/VPSLab-Free-Proxy-List/main/socks5_all.txt",
-        "parser": "plain",
-        "protocol": "socks5",
-    },
-    {
-        "name": "DPangestuw-HTTP",
-        "url": "https://raw.githubusercontent.com/dpangestuw/Free-Proxy/main/http_proxies.txt",
-        "parser": "plain",
-        "protocol": "http",
-    },
-    {
-        "name": "DPangestuw-SOCKS5",
-        "url": "https://raw.githubusercontent.com/dpangestuw/Free-Proxy/main/socks5_proxies.txt",
-        "parser": "plain",
-        "protocol": "socks5",
-    },
-    {
-        "name": "Databay-HTTP",
-        "url": "https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/http.txt",
-        "parser": "plain",
-        "protocol": "http",
-    },
-    {
-        "name": "Databay-SOCKS5",
-        "url": "https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/socks5.txt",
-        "parser": "plain",
-        "protocol": "socks5",
-    },
-    {
-        "name": "SoliSpirit-HTTP",
-        "url": "https://raw.githubusercontent.com/SoliSpirit/proxy-list/main/http.txt",
-        "parser": "plain",
-        "protocol": "http",
-    },
-    {
-        "name": "SoliSpirit-SOCKS5",
-        "url": "https://raw.githubusercontent.com/SoliSpirit/proxy-list/main/socks5.txt",
-        "parser": "plain",
-        "protocol": "socks5",
-    },
+    # ============== A 类：JSON/API 源 (4) ==============
+    _src("GeoNode API",
+         "https://proxylist.geonode.com/api/proxy-list?limit=500&page=1&sort_by=lastChecked&sort_type=desc",
+         parser="geonode_json", category="A", timeout=20_000),
+    _src("PubProxy API",
+         "http://pubproxy.com/api/proxy?limit=20&format=json&type=http",
+         parser="geonode_json", protocol="http", category="A", timeout=15_000),
+    _src("ProxyScrape HTTP",
+         "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all",
+         protocol="http", category="A"),
+    _src("proxy-list.download HTTP",
+         "https://www.proxy-list.download/api/v1/get?type=http",
+         protocol="http", category="A"),
+
+    # ============== B 类：GitHub RAW (25) ==============
+    _src("github/TheSpeedX HTTP", _GH + "TheSpeedX/PROXY-List/master/http.txt",
+         protocol="http", category="B", mirrors=_gh_mirrors(_GH + "TheSpeedX/PROXY-List/master/http.txt")),
+    _src("github/TheSpeedX SOCKS4", _GH + "TheSpeedX/PROXY-List/master/socks4.txt",
+         protocol="socks4", category="B", mirrors=_gh_mirrors(_GH + "TheSpeedX/PROXY-List/master/socks4.txt")),
+    _src("github/TheSpeedX SOCKS5", _GH + "TheSpeedX/PROXY-List/master/socks5.txt",
+         protocol="socks5", category="B", mirrors=_gh_mirrors(_GH + "TheSpeedX/PROXY-List/master/socks5.txt")),
+    _src("github/ShiftyTR HTTP", _GH + "ShiftyTR/Proxy-List/master/http.txt",
+         protocol="http", category="B", mirrors=_gh_mirrors(_GH + "ShiftyTR/Proxy-List/master/http.txt")),
+    _src("github/ShiftyTR HTTPS", _GH + "ShiftyTR/Proxy-List/master/https.txt",
+         protocol="https", category="B", mirrors=_gh_mirrors(_GH + "ShiftyTR/Proxy-List/master/https.txt")),
+    _src("github/hookzof SOCKS5", _GH + "hookzof/socks5_list/master/proxy.txt",
+         protocol="socks5", category="B", mirrors=_gh_mirrors(_GH + "hookzof/socks5_list/master/proxy.txt")),
+    _src("github/clarketm", _GH + "clarketm/proxy-list/master/proxy-list-raw.txt",
+         protocol="http", category="B", mirrors=_gh_mirrors(_GH + "clarketm/proxy-list/master/proxy-list-raw.txt")),
+    _src("github/monosans HTTP", _GH + "monosans/proxy-list/main/proxies/http.txt",
+         protocol="http", category="B", mirrors=_gh_mirrors(_GH + "monosans/proxy-list/main/proxies/http.txt")),
+    _src("github/monosans SOCKS4", _GH + "monosans/proxy-list/main/proxies/socks4.txt",
+         protocol="socks4", category="B", mirrors=_gh_mirrors(_GH + "monosans/proxy-list/main/proxies/socks4.txt")),
+    _src("github/monosans SOCKS5", _GH + "monosans/proxy-list/main/proxies/socks5.txt",
+         protocol="socks5", category="B", mirrors=_gh_mirrors(_GH + "monosans/proxy-list/main/proxies/socks5.txt")),
+    _src("github/prxchk HTTP", _GH + "prxchk/proxy-list/main/http.txt",
+         protocol="http", category="B", mirrors=_gh_mirrors(_GH + "prxchk/proxy-list/main/http.txt")),
+    _src("github/prxchk SOCKS4", _GH + "prxchk/proxy-list/main/socks4.txt",
+         protocol="socks4", category="B", mirrors=_gh_mirrors(_GH + "prxchk/proxy-list/main/socks4.txt")),
+    _src("github/prxchk SOCKS5", _GH + "prxchk/proxy-list/main/socks5.txt",
+         protocol="socks5", category="B", mirrors=_gh_mirrors(_GH + "prxchk/proxy-list/main/socks5.txt")),
+    _src("github/jetkai HTTP", _GH + "jetkai/proxy-list/main/online-proxies/txt/proxies-http.txt",
+         protocol="http", category="B", mirrors=_gh_mirrors(_GH + "jetkai/proxy-list/main/online-proxies/txt/proxies-http.txt")),
+    _src("github/jetkai SOCKS4", _GH + "jetkai/proxy-list/main/online-proxies/txt/proxies-socks4.txt",
+         protocol="socks4", category="B", mirrors=_gh_mirrors(_GH + "jetkai/proxy-list/main/online-proxies/txt/proxies-socks4.txt")),
+    _src("github/jetkai SOCKS5", _GH + "jetkai/proxy-list/main/online-proxies/txt/proxies-socks5.txt",
+         protocol="socks5", category="B", mirrors=_gh_mirrors(_GH + "jetkai/proxy-list/main/online-proxies/txt/proxies-socks5.txt")),
+    _src("github/ALIILAPRO HTTP", _GH + "ALIILAPRO/Proxy/main/http.txt",
+         protocol="http", category="B", mirrors=_gh_mirrors(_GH + "ALIILAPRO/Proxy/main/http.txt")),
+    _src("github/officialputuid HTTP", _GH + "officialputuid/Proxy-List/main/http.txt",
+         protocol="http", category="B", mirrors=_gh_mirrors(_GH + "officialputuid/Proxy-List/main/http.txt")),
+    _src("github/zuoxiaodongai 聚合", _GH + "zuoxiaodongai/proxies/main/all.txt",
+         protocol="http", category="B", mirrors=_gh_mirrors(_GH + "zuoxiaodongai/proxies/main/all.txt")),
+    _src("github/zloi-user HTTP", _GH + "zloi-user/hideip.me/main/http.txt",
+         protocol="http", category="B", mirrors=_gh_mirrors(_GH + "zloi-user/hideip.me/main/http.txt")),
+    _src("github/zloi-user HTTPS", _GH + "zloi-user/hideip.me/main/https.txt",
+         protocol="https", category="B", mirrors=_gh_mirrors(_GH + "zloi-user/hideip.me/main/https.txt")),
+    _src("github/zloi-user SOCKS4", _GH + "zloi-user/hideip.me/main/socks4.txt",
+         protocol="socks4", category="B", mirrors=_gh_mirrors(_GH + "zloi-user/hideip.me/main/socks4.txt")),
+    _src("github/zloi-user SOCKS5", _GH + "zloi-user/hideip.me/main/socks5.txt",
+         protocol="socks5", category="B", mirrors=_gh_mirrors(_GH + "zloi-user/hideip.me/main/socks5.txt")),
+    _src("github/roosterkid HTTPS", _GH + "roosterkid/openproxylist/main/HTTPS_RAW.txt",
+         protocol="https", category="B", mirrors=_gh_mirrors(_GH + "roosterkid/openproxylist/main/HTTPS_RAW.txt")),
+    _src("github/roosterkid SOCKS5", _GH + "roosterkid/openproxylist/main/SOCKS5_RAW.txt",
+         protocol="socks5", category="B", mirrors=_gh_mirrors(_GH + "roosterkid/openproxylist/main/SOCKS5_RAW.txt")),
+    _src("github/vakhov HTTP", _GH + "vakhov/fresh-proxy-list/master/http.txt",
+         protocol="http", category="B", mirrors=_gh_mirrors(_GH + "vakhov/fresh-proxy-list/master/http.txt")),
+    _src("github/vakhov SOCKS5", _GH + "vakhov/fresh-proxy-list/master/socks5.txt",
+         protocol="socks5", category="B", mirrors=_gh_mirrors(_GH + "vakhov/fresh-proxy-list/master/socks5.txt")),
+
+    # ============== C 类：HTML 表格 (2) ==============
+    _src("free-proxy-list.net", "https://free-proxy-list.net/",
+         parser="html_table", protocol="http", category="C", timeout=20_000),
+    _src("sslproxies.org", "https://www.sslproxies.org/",
+         parser="html_table", protocol="https", category="C", timeout=20_000),
+
+    # ============== D 类：TXT/CSV 镜像池 (5) ==============
+    _src("openproxylist.xyz HTTP", "https://openproxylist.xyz/http.txt",
+         protocol="http", category="D"),
+    _src("openproxylist.xyz SOCKS5", "https://openproxylist.xyz/socks5.txt",
+         protocol="socks5", category="D"),
+    _src("ProxyScrape SOCKS4",
+         "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=socks4&timeout=10000&country=all",
+         protocol="socks4", category="D"),
+    _src("ProxyScrape SOCKS5",
+         "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=socks5&timeout=10000&country=all",
+         protocol="socks5", category="D"),
+    _src("spys.me HTTP", "https://spys.me/proxy.txt",
+         protocol="http", category="D"),
+
+    # ============== E 类：订阅源 (6)（分享链接/Base64 → VMess/Trojan/VLESS/SS） ==============
+    _src("sub/Pawdroid", _GH + "Pawdroid/Free-servers/main/sub",
+         parser="subscription", protocol="auto", category="E", timeout=25_000,
+         mirrors=_gh_mirrors(_GH + "Pawdroid/Free-servers/main/sub")),
+    _src("sub/aiboboxx", _GH + "aiboboxx/v2rayfree/main/v2",
+         parser="subscription", protocol="auto", category="E", timeout=25_000,
+         mirrors=_gh_mirrors(_GH + "aiboboxx/v2rayfree/main/v2")),
+    _src("sub/mfuu", _GH + "mfuu/v2ray/master/v2ray",
+         parser="subscription", protocol="auto", category="E", timeout=25_000,
+         mirrors=_gh_mirrors(_GH + "mfuu/v2ray/master/v2ray")),
+    _src("sub/ermaozi", _GH + "ermaozi/get_subscribe/main/subscribe/v2ray.txt",
+         parser="subscription", protocol="auto", category="E", timeout=25_000,
+         mirrors=_gh_mirrors(_GH + "ermaozi/get_subscribe/main/subscribe/v2ray.txt")),
+    _src("sub/NoMoreWalls", _GH + "peasoft/NoMoreWalls/master/list.txt",
+         parser="subscription", protocol="auto", category="E", timeout=25_000,
+         mirrors=_gh_mirrors(_GH + "peasoft/NoMoreWalls/master/list.txt")),
+    _src("sub/V2RayAggregator", _GH + "mahdibland/V2RayAggregator/master/sub/sub_merge.txt",
+         parser="subscription", protocol="auto", category="E", timeout=25_000,
+         mirrors=_gh_mirrors(_GH + "mahdibland/V2RayAggregator/master/sub/sub_merge.txt")),
 ]
+
+# 分类标签（terminal 展示用）
+CATEGORY_LABELS = {
+    "A": "json/api",
+    "B": "github raw",
+    "C": "html table",
+    "D": "txt/csv pool",
+    "E": "sub(encrypted)",
+    "CUSTOM": "custom",
+}
+
+# 协议标签
+PROTOCOL_LABELS = {
+    "http": "HTTP", "https": "HTTPS", "socks4": "SOCKS4", "socks5": "SOCKS5",
+    "ss": "SS", "vmess": "VMess", "vless": "VLESS", "trojan": "Trojan",
+    "auto": "AUTO",
+}
+ALL_PROTOCOLS = list(PROTOCOL_LABELS.keys())
+ENCRYPTED_PROTOCOLS = ("ss", "vmess", "vless", "trojan")
+
 
 # ---------- 代理模式 ----------
 # global: 全局走代理；smart: 按规则自动分流；direct: 全直连(调试)
@@ -202,38 +245,29 @@ PROXY_MODE_SMART = "smart"
 PROXY_MODE_DIRECT = "direct"
 PROXY_MODES = [PROXY_MODE_GLOBAL, PROXY_MODE_SMART, PROXY_MODE_DIRECT]
 MODE_LABELS = {
-    PROXY_MODE_GLOBAL: "全局代理",
-    PROXY_MODE_SMART: "智能分流",
-    PROXY_MODE_DIRECT: "本地直连",
+    PROXY_MODE_GLOBAL: "global",
+    PROXY_MODE_SMART: "smart",
+    PROXY_MODE_DIRECT: "direct",
 }
 
 # 智能模式下默认直连的国内常见域名（匹配域名后缀，子域命中即直连）
-# 命中规则：host 等于该项，或以 .该项 结尾
 DIRECT_DOMAINS_CN = [
-    # 搜索/门户
     "baidu.com", "qq.com", "tencent.com", "sogou.com", "so.com",
     "163.com", "sina.com.cn", "sina.com", "sohu.com", "ifeng.com",
-    # 电商
     "taobao.com", "tmall.com", "jd.com", "pinduoduo.com", "1688.com",
     "suning.com", "douyin.com", "douyincdn.com",
-    # 视频/直播
     "bilibili.com", "bilibili.cn", "hdslb.com", "iqiyi.com", "youku.com",
     "v.qq.com", "mgvtv.com", "kuaishou.com",
-    # 社交/社区
     "weibo.com", "weibo.cn", "zhihu.com", "xiaohongshu.com", "tieba.baidu.com",
-    # 云服务/CDN
     "aliyuncs.com", "aliyun.com", "tencentcloudapi.com", "myqcloud.com",
     "qcloud.com", "huaweicloud.com", "cdn.douyinpic.com",
-    # 工具/支付
     "alipay.com", "alipayobjects.com", "amap.com", "bdstatic.com",
     "bdimg.com", "gtimg.com", "qpic.cn",
-    # 政务/教育
     "gov.cn", "edu.cn", "ac.cn",
-    # 通用后缀：国内域名后缀整体直连
     "cn",
 ]
 
-# 默认强制走代理的域名（即使命中直连表也走代理，优先级更高）
+# 默认强制走代理的域名（优先级更高）
 PROXY_DOMAINS = [
     "google.com", "googleapis.com", "gstatic.com", "googlevideo.com",
     "youtube.com", "ytimg.com", "facebook.com", "fbcdn.net",
@@ -244,26 +278,3 @@ PROXY_DOMAINS = [
     "openai.com", "claude.ai", "anthropic.com",
     "netflix.com", "nflxvideo.net", "spotify.com", "disneyplus.com",
 ]
-
-# ---------- 精致优雅主题 ----------
-COLOR_BG = "#f4f5f7"              # 页面背景：柔和浅灰
-COLOR_CARD = "#ffffff"            # 卡片/面板：纯白
-COLOR_BAR = "#ffffff"             # 工具栏
-COLOR_HOVER = "#eef1f5"           # hover 浅灰
-COLOR_PRIMARY = "#3b6cf6"         # 主色：精致蓝
-COLOR_PRIMARY_HOVER = "#2f5bd6"   # 主色 hover
-COLOR_PRIMARY_SOFT = "#e8efff"    # 主色浅底（标签/选中行）
-COLOR_DANGER = "#e5484d"          # 危险红
-COLOR_DANGER_HOVER = "#c93a3f"
-COLOR_TEXT = "#1a1d23"            # 主文字：近黑
-COLOR_TEXT_MUTED = "#8b909a"      # 次要文字：中灰
-COLOR_TEXT_FAINT = "#b4b9c2"      # 更淡：表头/占位
-COLOR_BORDER = "#e8eaee"          # 边框：极淡
-COLOR_ROW_ALT = "#fafbfc"         # 隔行底
-COLOR_ROW_HOVER = "#f0f3f8"       # 行 hover
-COLOR_GOOD = "#22a06b"            # 可用绿
-COLOR_BAD = "#d44950"             # 不可用红
-COLOR_WARN = "#e8a317"            # 警告橙
-
-FONT_FAMILY = "Segoe UI"
-FONT_SIZE = 9

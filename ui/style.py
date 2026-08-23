@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
-"""精致优雅主题：圆角按钮、细窄滚动条、卡片、ghost 按钮。"""
+"""Relay terminal 主题：圆角按钮、细窄滚动条、卡片、ghost 按钮、terminal 导航。
+
+标记规范（全 app 统一）：
+  开关  = [●] 开 / [○] 关
+  选择  = [○] 选中 / [ ] 未选中
+  行内操作 = [ed] 编辑 / [rm] 删除
+  禁止使用 [x] / [X]（易被误读为"关闭/错误"）。
+"""
 import math
 import tkinter as tk
 from tkinter import ttk
@@ -12,7 +19,7 @@ from config import (COLOR_BG, COLOR_CARD, COLOR_BAR, COLOR_HOVER,
                     FONT_FAMILY, FONT_SIZE)
 
 
-# ---------- 统一图标体系（Unicode 符号，零依赖） ----------
+# ---------- 统一图标体系（Unicode 符号，零依赖，符合 Relay 标记规范） ----------
 class Icon:
     # 操作类
     FETCH = "⤓"        # 抓取/下载
@@ -24,8 +31,6 @@ class Icon:
     IMPORT = "↧"       # 导入
     EXPORT = "↥"       # 导出
     EXPORT_ALIVE = "★" # 导出可用
-    DELETE = "⊗"       # 删除
-    CLEAR = "✕"        # 清空
     SETTINGS = "⚙"     # 设置
     SOURCE = "❖"       # 抓取源
     SEARCH = "⌕"       # 搜索
@@ -33,14 +38,59 @@ class Icon:
     PIN = "★"          # 设为当前上游
     SUBSCRIBE = "↻"     # 订阅导入
     ALARM = "⚠"        # 紧急/警告
-    # 状态类
-    DOT_ON = "●"       # 可用
-    DOT_OFF = "○"      # 未检测
-    DOT_FAIL = "✕"     # 不可用
+    CLEAR = "⌫"        # 清空/清理（不用 ✕，避免误读为关闭）
+    DELETE = "−"       # 删除（不用 ✕，避免误读为错误）
+    # 状态类（规范：禁止 [x]/[X]）
+    DOT_ON = "●"       # 可用 / 开
+    DOT_OFF = "○"      # 未检测 / 关
+    DOT_FAIL = "○"     # 不可用（空心，配合红色文字区分）
     DOT_RUN = "●"      # 运行中
-    OK_MARK = "✓"
-    FAIL_MARK = "✕"
+    OK_MARK = "OK"
+    FAIL_MARK = "ERR"
+    # 选择类
+    SEL_ON = "○"       # 选中（选择场景）
+    SEL_OFF = " "      # 未选中
+    # 行内操作
+    OP_EDIT = "[ed]"   # 编辑
+    OP_REMOVE = "[rm]" # 删除
     SEP = "·"          # 分隔
+
+
+class NavItem(tk.Label):
+    """terminal 导航项：选中=[HOME]，未选中= HOME 。"""
+
+    def __init__(self, master, label, selected=False, command=None, **kw):
+        self._label = label          # 如 "HOME"
+        self._command = command
+        self._selected = selected
+        super().__init__(master, text=self._fmt(selected),
+                         font=(FONT_FAMILY, FONT_SIZE + 1, "bold" if selected else "normal"),
+                         fg=COLOR_PRIMARY if selected else COLOR_TEXT_MUTED,
+                         bg=COLOR_BAR, cursor="hand2", **kw)
+        self.bind("<Button-1>", self._on_click)
+        self.bind("<Enter>", lambda e: self.configure(fg=COLOR_PRIMARY if self._selected else COLOR_TEXT))
+        self.bind("<Leave>", lambda e: self.configure(
+            fg=COLOR_PRIMARY if self._selected else COLOR_TEXT_MUTED))
+
+    def _fmt(self, selected):
+        return f"[{self._label}]" if selected else f" {self._label} "
+
+    def set_selected(self, on):
+        self._selected = on
+        self.configure(text=self._fmt(on),
+                       font=(FONT_FAMILY, FONT_SIZE + 1, "bold" if on else "normal"),
+                       fg=COLOR_PRIMARY if on else COLOR_TEXT_MUTED)
+
+    def _on_click(self, e):
+        if self._command:
+            self._command()
+
+
+class TermLine(tk.Frame):
+    """terminal 分隔线：细横线。"""
+
+    def __init__(self, master, **kw):
+        super().__init__(master, bg=COLOR_BORDER, height=1, **kw)
 
 
 def apply_style(root: tk.Tk):
