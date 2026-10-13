@@ -1,5 +1,7 @@
 # Relay · 免费代理工具箱
 
+![Version](https://img.shields.io/github/v/release/x2it/Relay)
+
 免费代理工具，提供 Windows 桌面版与 Android 版，一键抓取、验证、转发公开代理与加密节点。统一 terminal 暗色风格。
 
 **Relay** is a free proxy toolbox with two editions — a Windows desktop app (Python + tkinter) and an Android VPN app (Kotlin + Compose). It fetches public proxies from 44 open sources, runs four-layer validation, and forwards them through a local HTTP proxy or sing-box TUN tunnel. Supports HTTP/HTTPS/SOCKS4/SOCKS5 plus encrypted nodes (SS/VMess/VLESS/Trojan).
@@ -10,8 +12,8 @@
 
 | 版本 | 平台 | 路径 | 当前版本 |
 |------|------|------|------|
-| Relay Desktop | Windows 桌面 | 根目录 | v1.7.0 |
-| Relay Android | Android | `android/` | v1.4.1 |
+| Relay Desktop | Windows 桌面 | 根目录 | v1.7.3 |
+| Relay Android | Android | `android/` | v1.5.1 |
 
 ---
 
