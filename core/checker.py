@@ -169,6 +169,45 @@ def _test_connect_tunnel(proxy: Dict, target_host: str = "www.google.com",
                 try: s.close()
                 except: pass
                 return False, elapsed
+        elif proto == "socks4":
+            # SOCKS4/SOCKS4a CONNECT 握手（复用 local_proxy 的纯函数，无第三方依赖）
+            from core.local_proxy import (build_socks4_request,
+                                          parse_socks4_reply, _recv_exact_n)
+            s.sendall(build_socks4_request(target_host, target_port))
+            reply = _recv_exact_n(s, 8)
+            if not parse_socks4_reply(reply):
+                try: s.close()
+                except: pass
+                return False, int((time.time() - t0) * 1000)
+            # TLS handshake
+            try:
+                import ssl
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                tls_sock = ctx.wrap_socket(s, server_hostname=target_host)
+                tls_sock.sendall(b"GET / HTTP/1.0\r\nHost: www.google.com\r\nConnection: close\r\n\r\n")
+                data = b""
+                tls_sock.settimeout(timeout)
+                try:
+                    while True:
+                        chunk = tls_sock.recv(4096)
+                        if not chunk:
+                            break
+                        data += chunk
+                        if len(data) >= 4096:
+                            break
+                except Exception:
+                    pass
+                elapsed = int((time.time() - t0) * 1000)
+                try: tls_sock.close()
+                except: pass
+                return (len(data) > 0), elapsed
+            except Exception:
+                elapsed = int((time.time() - t0) * 1000)
+                try: s.close()
+                except: pass
+                return False, elapsed
         else:
             try: s.close()
             except: pass
@@ -232,6 +271,17 @@ def check_one(proxy: Dict, test_url: str = CHECK_TEST_URL,
     proto = proxy.get("protocol", "http")
     if proto in ENCRYPTED_PROTOCOLS:
         return _check_encrypted(proxy, timeout=timeout)
+
+    # SOCKS4 不被 requests/PySocks 支持，跳过 HTTP 连通性步骤，直接以隧道测试为准
+    if proto == "socks4":
+        connect_ok, connect_latency = _test_connect_tunnel(
+            proxy, "www.google.com", 443, timeout=timeout)
+        alive = connect_ok
+        https_ok = connect_ok
+        latency_ms = connect_latency if connect_ok else 0
+        proxy["https_ok"] = https_ok
+        store.update_proxy_status(proxy, alive, latency_ms, 0.0)
+        return proxy
 
     purl = _proxy_url(proxy)
     proxies = {"http": purl, "https": purl}

@@ -11,14 +11,14 @@ from .links import parse_link, parse_subscription, to_share_link
 # 加密隧道协议（连上服务器后即直达目标站点）
 ENCRYPTED_PROTOCOLS = ("ss", "vmess", "vless", "trojan")
 # 隧道类协议：连接建立后即为"到目标站点"的直连隧道（与 HTTP 上游不同）
-TUNNEL_PROTOCOLS = ("socks5",) + ENCRYPTED_PROTOCOLS
+TUNNEL_PROTOCOLS = ("socks4", "socks5") + ENCRYPTED_PROTOCOLS
 
 # 全部支持的协议（用于 UI 过滤 / 排序）
-ALL_PROTOCOLS = ("http", "https", "socks5") + ENCRYPTED_PROTOCOLS
+ALL_PROTOCOLS = ("http", "https", "socks4", "socks5") + ENCRYPTED_PROTOCOLS
 
 # 协议中文名（用于 UI 展示）
 PROTOCOL_LABELS = {
-    "http": "HTTP", "https": "HTTPS", "socks5": "SOCKS5",
+    "http": "HTTP", "https": "HTTPS", "socks4": "SOCKS4", "socks5": "SOCKS5",
     "ss": "Shadowsocks", "vmess": "VMess", "vless": "VLess", "trojan": "Trojan",
 }
 

@@ -1154,7 +1154,7 @@ class MainWindow:
             start = time.time()
             tunnel = None
             try:
-                if proto in ("http", "https"):
+                if proto in ("http", "https", "socks4"):
                     tunnel = probe._open_upstream_tunnel(cur, "www.google.com", 443)
                 elif proto == "socks5":
                     s = socket.create_connection((cur["ip"], cur["port"]), timeout=12)

@@ -294,6 +294,58 @@ def _socks5_connect(upstream_sock: socket.socket, host: str, port: int) -> bool:
         return False
 
 
+# ---------- SOCKS4/SOCKS4a 上游握手（无第三方依赖） ----------
+
+def _recv_exact_n(sock: socket.socket, n: int) -> bytes:
+    """精确读取 n 字节；EOF 时返回已读部分。"""
+    data = b""
+    while len(data) < n:
+        chunk = sock.recv(n - len(data))
+        if not chunk:
+            break
+        data += chunk
+    return data
+
+
+def build_socks4_request(host: str, port: int, userid: str = "") -> bytes:
+    """构造 SOCKS4 CONNECT 请求字节流。
+
+    格式：VN(0x04) + CD(0x01=CONNECT) + 端口(2, 大端) + IP(4) + USERID + 0x00。
+    目标为域名时走 SOCKS4a：占位 IP 0.0.0.1，域名附在 USERID 之后以 0x00 终止，
+    由代理侧负责解析。
+    """
+    port_b = int(port).to_bytes(2, "big")
+    uid = userid.encode("utf-8", "ignore")
+    try:
+        ip_b = socket.inet_aton(host)
+        return b"\x04\x01" + port_b + ip_b + uid + b"\x00"
+    except OSError:
+        # SOCKS4a：0.0.0.x（末字节非 0）表示交由代理解析域名
+        return (b"\x04\x01" + port_b + b"\x00\x00\x00\x01"
+                + uid + b"\x00" + host.encode("idna") + b"\x00")
+
+
+def parse_socks4_reply(data: bytes) -> bool:
+    """解析 SOCKS4 8 字节回复：VN=0x00 且 CD=0x5A(请求许可) 即成功。"""
+    return len(data) >= 2 and data[0] == 0x00 and data[1] == 0x5A
+
+
+def _socks4_connect(upstream_sock: socket.socket, host: str, port: int) -> bool:
+    """完成 SOCKS4/SOCKS4a CONNECT 握手，成功返回 True。"""
+    try:
+        upstream_sock.sendall(build_socks4_request(host, port))
+        reply = _recv_exact_n(upstream_sock, 8)
+        return parse_socks4_reply(reply)
+    except Exception:
+        return False
+
+
+def build_http_connect_request(host: str, port: int) -> bytes:
+    """构造发往 HTTP 上游代理的 CONNECT 请求字节流（抽出便于单测）。"""
+    return (f"CONNECT {host}:{port} HTTP/1.1\r\n"
+            f"Host: {host}:{port}\r\n\r\n").encode("latin-1")
+
+
 # ---------- 上游代理选择 ----------
 
 class ProxyRotator:
@@ -1170,6 +1222,20 @@ class LocalProxyServer:
             except Exception:
                 pass
             return None
+        if proto == "socks4":
+            try:
+                s = socket.create_connection((upstream["ip"], upstream["port"]),
+                                             timeout=10)
+                s.settimeout(30)
+            except Exception:
+                return None
+            if _socks4_connect(s, host, port):
+                return s
+            try:
+                s.close()
+            except Exception:
+                pass
+            return None
         if proto in ENCRYPTED_PROTOCOLS:
             try:
                 return connect_proxy(upstream, host, port, timeout=15)
@@ -1188,8 +1254,7 @@ class LocalProxyServer:
                 s.settimeout(30)
             except Exception:
                 return None
-            req = (f"CONNECT {host}:{port} HTTP/1.1\r\n"
-                   f"Host: {host}:{port}\r\n\r\n").encode("latin-1")
+            req = build_http_connect_request(host, port)
             try:
                 s.sendall(req)
                 resp = b""
@@ -1231,6 +1296,20 @@ class LocalProxyServer:
             except Exception:
                 return None
             if _socks5_connect(s, host, port):
+                return s
+            try:
+                s.close()
+            except Exception:
+                pass
+            return None
+        if proto == "socks4":
+            try:
+                s = socket.create_connection((upstream["ip"], upstream["port"]),
+                                             timeout=15)
+                s.settimeout(30)
+            except Exception:
+                return None
+            if _socks4_connect(s, host, port):
                 return s
             try:
                 s.close()
