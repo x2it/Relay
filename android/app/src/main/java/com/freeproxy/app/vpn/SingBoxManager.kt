@@ -4,14 +4,24 @@ import android.content.Context
 import android.util.Log
 import com.freeproxy.app.data.model.ProxyInfo
 import com.freeproxy.app.data.model.ProxyType
-import io.nekohasekai.libbox.BoxService
+import io.nekohasekai.libbox.CommandServer
+import io.nekohasekai.libbox.CommandServerHandler
+import io.nekohasekai.libbox.ConnectionOwner
 import io.nekohasekai.libbox.InterfaceUpdateListener
 import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.libbox.LocalDNSTransport
+import io.nekohasekai.libbox.NeighborUpdateListener
 import io.nekohasekai.libbox.NetworkInterface
 import io.nekohasekai.libbox.NetworkInterfaceIterator
 import io.nekohasekai.libbox.Notification
+import io.nekohasekai.libbox.OverrideOptions
 import io.nekohasekai.libbox.PlatformInterface
+import io.nekohasekai.libbox.PlatformUser
 import io.nekohasekai.libbox.SetupOptions
+import io.nekohasekai.libbox.ShellSession
+import io.nekohasekai.libbox.BridgeOptions
+import io.nekohasekai.libbox.BridgeSession
+import io.nekohasekai.libbox.SystemProxyStatus
 import io.nekohasekai.libbox.TunOptions
 import io.nekohasekai.libbox.WIFIState
 import org.json.JSONArray
@@ -21,11 +31,14 @@ import java.net.InetSocketAddress
 import java.net.Socket
 
 /**
- * sing-box 核心封装。
+ * sing-box 真实内核封装（基于 v1.14.3 libbox CommandServer）。
  *
- * 加密节点（VMess/Trojan/VLESS/Shadowsocks）无法用普通 HTTP/SOCKS 隧道直连，
- * 这里把它们交给 sing-box 以「本地 mixed 入站」（HTTP+SOCKS5，监听 127.0.0.1:2080）方式运行，
- * 既有 ProxyVpnService 的 HTTP CONNECT 隧道逻辑不变，只需把上游改为本机 sing-box 即可。
+ * 加密节点（SS / VMess / VLESS / Trojan）无法用普通 HTTP/SOCKS 隧道直连，这里把它们交给
+ * sing-box，以「本地 mixed 入站」（HTTP+SOCKS5，监听 127.0.0.1:2080）方式运行；既有
+ * ProxyVpnService 的手写 TUN 与 HTTP CONNECT 隧道逻辑不变，只需把上游改为本机 sing-box。
+ *
+ * 本进程内不使用 sing-box 的 TUN 入站（无 tun inbound），因此 PlatformInterface.openTun
+ * 不会被调用；平台回调以安全默认值实现，出站由系统默认网络发出。
  *
  * 生命周期由 VPN 服务持有：VPN 启动前 ensureRunning()，VPN 停止时 stop()。
  */
@@ -37,7 +50,7 @@ object SingBoxManager {
     private const val TAG = "SingBox"
     private const val OUTBOUND_TAG = "node"
 
-    @Volatile private var service: BoxService? = null
+    @Volatile private var server: CommandServer? = null
     @Volatile private var startedFingerprint: String? = null
 
     private val setupLock = Any()
@@ -47,7 +60,7 @@ object SingBoxManager {
     @Volatile var lastError: String? = null
         private set
 
-    fun isRunning(): Boolean = service != null
+    fun isRunning(): Boolean = server != null
 
     /**
      * 确保 sing-box 已用指定加密节点启动。
@@ -57,24 +70,21 @@ object SingBoxManager {
     @Synchronized
     fun ensureRunning(proxy: ProxyInfo, appContext: Context): Boolean {
         val fp = proxyFingerprint(proxy)
-        if (service != null && startedFingerprint == fp) return true
+        if (server != null && startedFingerprint == fp) return true
 
         return runCatching {
             stopInternal()
-            Libbox.touch()
             ensureSetup(appContext)
 
             val config = buildConfig(proxy)
                 ?: error("无法生成 sing-box 配置（缺少必要字段）")
             Libbox.checkConfig(config)
 
-            val newService = Libbox.newService(config, RelayPlatform())
-            // start() 会阻塞直到服务停止，必须在独立线程运行
-            Thread {
-                runCatching { newService.start() }
-            }.apply { isDaemon = true; start() }
+            val commandServer = Libbox.newCommandServer(RelayHandler(), RelayPlatform())
+            commandServer.start()
+            commandServer.startOrReloadService(config, OverrideOptions().apply { autoRedirect = false })
 
-            service = newService
+            server = commandServer
             startedFingerprint = fp
 
             if (!waitForInboundReady(5000)) {
@@ -95,14 +105,15 @@ object SingBoxManager {
     /** 停止 sing-box（VPN 断开时调用） */
     fun stop() {
         runCatching { stopInternal() }
-        service = null
+        server = null
         startedFingerprint = null
     }
 
     private fun stopInternal() {
-        val s = service ?: return
-        service = null
+        val s = server ?: return
+        server = null
         startedFingerprint = null
+        runCatching { s.closeService() }
         runCatching { s.close() }
     }
 
@@ -121,6 +132,14 @@ object SingBoxManager {
                 basePath = root.absolutePath
                 workingPath = working.absolutePath
                 tempPath = temp.absolutePath
+                logMaxLines = 3000L
+                crashReportSource = "Relay"
+                appVersion = "2.0.0"
+                appMarketingVersion = "2.0.0"
+                fixAndroidStack = false
+                debug = false
+                oomKillerEnabled = false
+                powerReportEnabled = false
             })
             setupDone = true
         }
@@ -142,7 +161,7 @@ object SingBoxManager {
     }
 
     // ======================================================================
-    // sing-box 配置生成（把 ShareLinkParser 的扁平 configJson 转为出站）
+    // sing-box 配置生成（把 ShareLinkParser 的扁平 configJson 转为出站，v1.14 格式）
     // ======================================================================
 
     private fun buildConfig(proxy: ProxyInfo): String? {
@@ -182,11 +201,11 @@ object SingBoxManager {
 
     private fun buildVmess(c: JSONObject?, proxy: ProxyInfo): JSONObject? {
         val server = proxy.host
-        val uuid = c?.optString("uuid") ?: proxy.username ?: return null
+        val uuid = c?.optString("uuid")?.takeIf { it.isNotBlank() } ?: proxy.username ?: return null
         val security = c?.optString("security")?.takeIf { it.isNotBlank() } ?: "auto"
         val alterId = c?.optInt("alterId", 0) ?: 0
         val tls = c?.optString("tls") ?: "none"
-        val sni = c?.optString("sni") ?: server
+        val sni = c?.optString("sni")?.takeIf { it.isNotBlank() } ?: server
         val network = c?.optString("network") ?: "tcp"
         val host = c?.optString("host")
         val path = c?.optString("path")
@@ -210,9 +229,9 @@ object SingBoxManager {
 
     private fun buildTrojan(c: JSONObject?, proxy: ProxyInfo): JSONObject? {
         val server = proxy.host
-        val password = c?.optString("password") ?: proxy.username ?: return null
+        val password = c?.optString("password")?.takeIf { it.isNotBlank() } ?: proxy.username ?: return null
         val tls = c?.optString("tls") ?: "tls"
-        val sni = c?.optString("sni") ?: server
+        val sni = c?.optString("sni")?.takeIf { it.isNotBlank() } ?: server
         val network = c?.optString("network") ?: "tcp"
         val host = c?.optString("host")
         val path = c?.optString("path")
@@ -233,9 +252,9 @@ object SingBoxManager {
 
     private fun buildVless(c: JSONObject?, proxy: ProxyInfo): JSONObject? {
         val server = proxy.host
-        val uuid = c?.optString("uuid") ?: proxy.username ?: return null
+        val uuid = c?.optString("uuid")?.takeIf { it.isNotBlank() } ?: proxy.username ?: return null
         val tls = c?.optString("tls") ?: "none"
-        val sni = c?.optString("sni") ?: server
+        val sni = c?.optString("sni")?.takeIf { it.isNotBlank() } ?: server
         val network = c?.optString("network") ?: "tcp"
         val host = c?.optString("host")
         val path = c?.optString("path")
@@ -257,8 +276,8 @@ object SingBoxManager {
     }
 
     private fun buildSs(c: JSONObject?, proxy: ProxyInfo): JSONObject? {
-        val method = c?.optString("method") ?: proxy.username ?: return null
-        val password = c?.optString("password") ?: proxy.password ?: return null
+        val method = c?.optString("method")?.takeIf { it.isNotBlank() } ?: proxy.username ?: return null
+        val password = c?.optString("password")?.takeIf { it.isNotBlank() } ?: proxy.password ?: return null
         return JSONObject()
             .put("type", "shadowsocks")
             .put("tag", OUTBOUND_TAG)
@@ -304,34 +323,119 @@ object SingBoxManager {
     }
 
     // ======================================================================
-    // PlatformInterface：非 TUN 模式，多数方法空实现 / 返回安全默认值
+    // CommandServerHandler：核心回调，仅实现必要的安全默认值
+    // ======================================================================
+
+    private class RelayHandler : CommandServerHandler {
+        override fun serviceStop() {
+            runCatching { SingBoxManager.server?.closeService() }
+        }
+
+        override fun serviceReload() {
+            // 单节点即时切换由 ensureRunning 重建服务，无需热重载
+        }
+
+        override fun getSystemProxyStatus(): SystemProxyStatus =
+            SystemProxyStatus().apply { available = false; enabled = false }
+
+        override fun setSystemProxyEnabled(enabled: Boolean) {
+            // 不使用系统代理
+        }
+
+        override fun triggerNativeCrash(): Nothing = throw UnsupportedOperationException("native crash disabled")
+
+        override fun connectSSHAgent(): Int = throw UnsupportedOperationException("ssh agent unsupported")
+
+        override fun writeDebugMessage(message: String) {
+            Log.d(TAG, message)
+        }
+    }
+
+    // ======================================================================
+    // PlatformInterface：非 TUN 模式，多数方法返回安全默认值 / 抛不支持
     // ======================================================================
 
     private class RelayPlatform : PlatformInterface {
-        override fun acquireWakeLock(): Boolean = false
-        override fun releaseWakeLock() {}
-        override fun autoDetectInterfaceControl(fd: Int) {}
-        override fun clearDNSCache() {}
-        override fun closeDefaultInterfaceMonitor(listener: InterfaceUpdateListener?) {}
-        override fun findConnectionOwner(
-            ipProtocol: Int, sourceAddress: String?, sourcePort: Int,
-            destinationAddress: String?, destinationPort: Int,
-        ): Int = -1
-        override fun getInterfaces(): NetworkInterfaceIterator = EmptyNetIterator
-        override fun includeAllNetworks(): Boolean = false
-        override fun openTun(options: TunOptions?): Int = -1
-        override fun packageNameByUid(uid: Int): String? = null
-        override fun readWIFIState(): WIFIState = WIFIState()
-        override fun sendNotification(notification: Notification?) {}
-        override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener?) {}
-        override fun uidByPackageName(packageName: String?): Int = -1
-        override fun underNetworkExtension(): Boolean = false
+        override fun localDNSTransport(): LocalDNSTransport? = null
+
         override fun usePlatformAutoDetectInterfaceControl(): Boolean = false
+
+        override fun autoDetectInterfaceControl(fd: Int) {
+            // 出站套接字由系统默认网络发出，无需绑定指定接口
+        }
+
+        override fun openTun(options: TunOptions): Int =
+            throw UnsupportedOperationException("tun inbound is not used (mixed inbound mode)")
+
         override fun useProcFS(): Boolean = false
-        override fun writeLog(message: String?) { Log.d(TAG, message ?: "") }
+
+        override fun findConnectionOwner(
+            ipProtocol: Int, sourceAddress: String, sourcePort: Int,
+            destinationAddress: String, destinationPort: Int,
+        ): ConnectionOwner = throw UnsupportedOperationException("connection owner lookup unsupported")
+
+        override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener) {
+            // 本地 mixed 入站不需要默认接口监控
+        }
+
+        override fun closeDefaultInterfaceMonitor(listener: InterfaceUpdateListener) {
+        }
+
+        override fun getInterfaces(): NetworkInterfaceIterator = EmptyInterfaceIterator
+
+        override fun underNetworkExtension(): Boolean = false
+
+        override fun includeAllNetworks(): Boolean = false
+
+        override fun readWIFIState(): WIFIState? = null
+
+        override fun clearDNSCache() {
+        }
+
+        override fun sendNotification(notification: Notification) {
+            // 通知由 VPN 服务统一管理
+        }
+
+        override fun cancelNotification(identifier: String, typeID: Int) {
+        }
+
+        override fun startNeighborMonitor(listener: NeighborUpdateListener) =
+            throw UnsupportedOperationException("neighbor monitor unsupported")
+
+        override fun closeNeighborMonitor(listener: NeighborUpdateListener) {
+        }
+
+        override fun registerMyInterface(name: String) {
+        }
+
+        override fun usePlatformShell(): Boolean = false
+
+        override fun checkPlatformShell() =
+            throw UnsupportedOperationException("shell unsupported")
+
+        override fun openShellSession(
+            user: PlatformUser?, command: String?, environ: io.nekohasekai.libbox.StringIterator?,
+            term: String?, rows: Int, cols: Int,
+        ): ShellSession = throw UnsupportedOperationException("shell session unsupported")
+
+        override fun lookupUser(username: String?): PlatformUser =
+            throw UnsupportedOperationException("lookup user unsupported")
+
+        override fun lookupSFTPServer(): String =
+            throw UnsupportedOperationException("sftp unsupported")
+
+        override fun readSystemSSHHostKey(): String =
+            throw UnsupportedOperationException("ssh host key unsupported")
+
+        override fun tailscaleHostname(): String = ""
+
+        override fun usePlatformBridge(): Boolean = false
+
+        override fun createBridge(options: BridgeOptions?): BridgeSession =
+            throw UnsupportedOperationException("bridge unsupported")
     }
 
-    private object EmptyNetIterator : NetworkInterfaceIterator {
+    private object EmptyInterfaceIterator : NetworkInterfaceIterator {
         override fun hasNext(): Boolean = false
         override fun next(): NetworkInterface = NetworkInterface()
     }
