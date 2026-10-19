@@ -57,7 +57,7 @@ import com.freeproxy.app.ui.theme.Warn
 import com.freeproxy.app.vpn.RouteMode
 import com.freeproxy.app.vpn.SUGGESTED_EXCLUDED_PACKAGES
 
-private const val VERSION = "v1.5.1"
+private const val VERSION = "v2.0.0"
 
 /**
  * CONF 设置页（terminal 极简风格）

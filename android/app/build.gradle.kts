@@ -1,9 +1,22 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("kotlin-parcelize")
     id("com.google.devtools.ksp")
 }
+
+// 读取本地 local.properties（已被 .gitignore 忽略，不入库）。
+// Release 签名材料只从本地文件 / CI secrets 注入，仓库内不保存任何密钥。
+val releaseProps = Properties().apply {
+    val localProps = rootProject.file("local.properties")
+    if (localProps.exists()) {
+        FileInputStream(localProps).use { load(it) }
+    }
+}
+val hasReleaseSigning = !releaseProps.getProperty("RELEASE_STORE_FILE").isNullOrBlank()
 
 android {
     namespace = "com.freeproxy.app"
@@ -13,12 +26,23 @@ android {
         applicationId = "com.freeproxy.app"
         minSdk = 24
         targetSdk = 33
-        versionCode = 18
-        versionName = "1.5.1"
+        versionCode = 19
+        versionName = "2.0.0"
         vectorDrawables { useSupportLibrary = true }
 
         // sing-box 原生库只保留 arm64（现代安卓手机），APK 体积大幅下降
         ndk { abiFilters += listOf("arm64-v8a") }
+    }
+
+    signingConfigs {
+        create("release") {
+            if (hasReleaseSigning) {
+                storeFile = file(releaseProps.getProperty("RELEASE_STORE_FILE"))
+                storePassword = releaseProps.getProperty("RELEASE_STORE_PASSWORD")
+                keyAlias = releaseProps.getProperty("RELEASE_KEY_ALIAS")
+                keyPassword = releaseProps.getProperty("RELEASE_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -26,8 +50,12 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // 复用 debug 签名：免 keystore 配置，且可覆盖安装已装版本（保数据）
-            signingConfig = signingConfigs.getByName("debug")
+            // 配置了本地 release keystore 时使用正式签名；否则回退 debug 签名（仅用于本地临时构建）。
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
@@ -92,7 +120,10 @@ dependencies {
     // DocumentFile (导入导出用)
     implementation("androidx.documentfile:documentfile:1.0.1")
 
-    // sing-box 核心（libbox，加密节点 VMess/Trojan/VLESS/SS 出站）- stub 已内嵌
+    // sing-box 真实内核（libbox AAR，加密节点 SS/VMess/VLESS/Trojan 出站）。
+    // AAR 体积大且为构建产物，不入库；由 scripts/build-libbox.sh 从 sing-box v1.14.3 源码
+    // 通过 gomobile 构建后放置到 app/libs/libbox.aar。
+    implementation(files("libs/libbox.aar"))
 
     // CameraX + ML Kit：内置扫码添加节点
     implementation("androidx.camera:camera-core:1.3.1")

@@ -23,7 +23,6 @@ build-*.log
 README_BUILD.md
 Relay-*.apk
 
-# ===== sing-box core（42MB 二进制，不入库；构建前从官方 release 放置到 app/libs/）=====
-app/libs/libbox.aar
-app/libs/_aar_tmp/
-app/libs/_jar/
+# ===== sing-box 核心（libbox.aar 为构建产物，不入库）=====
+# 由 scripts/build-libbox.sh 从 sing-box v1.14.3 源码经 gomobile 构建后输出到本目录。
+app/libs/
