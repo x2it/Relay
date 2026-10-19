@@ -1,7 +1,8 @@
 name: CI
 
-# 桌面端（Windows/Python3+tkinter）静态检查 + 单元测试。
-# 仅在 ubuntu 上跑编译检查/ruff/pytest；Windows 打包（PyInstaller exe）不在 CI 内。
+# 桌面端（Windows/Python3+tkinter）静态检查 + 单元测试；Android 端（Kotlin/Compose）构建验证。
+# 桌面端在 ubuntu 上跑编译检查/ruff/pytest；Windows 打包（PyInstaller exe）不在 CI 内。
+# Android 端需先构建 libbox 内核（Go + NDK），再 assembleRelease；产物输出 SHA256。
 on:
   push:
     branches: [main]
@@ -34,3 +35,52 @@ jobs:
 
       - name: pytest
         run: pytest -q
+
+  android-build:
+    name: Android · assembleRelease
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        id: setup-java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Setup Android SDK & NDK
+        run: |
+          SDK="$ANDROID_HOME"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
+
+      - name: Build libbox AAR
+        run: bash android/scripts/build-libbox.sh
+
+      - name: Build APK
+        run: |
+          cd android
+          ./gradlew :app:assembleRelease --no-daemon
+          APK=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
+          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
+          sha256sum "$APK" > "$APK.sha256"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: relay-release-apk
+          path: android/app/build/outputs/apk/release/*.apk*
+          if-no-files-found: error
+
+      - name: Summarize
+        run: |
+          echo "## Android APK" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Path: ${{ env.APK_PATH }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- SHA256: $(cat "${APK_PATH}.sha256" | awk '{print $1}')" >> "$GITHUB_STEP_SUMMARY"
