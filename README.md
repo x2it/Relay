@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/x2it/Relay/actions/workflows/ci.yml/badge.svg)](https://github.com/x2it/Relay/actions/workflows/ci.yml)
 ![Version](https://img.shields.io/github/v/release/x2it/Relay)
+![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)
 
 免费代理工具箱：一键抓取、多级验证、转发公开代理与加密节点。Windows 桌面版 + Android 版，极简极客视觉，知行工作室出品。
 
@@ -137,4 +138,4 @@ CI 中由 GitHub Actions 自动执行上述两步。
 
 ## 许可证
 
-[MIT](LICENSE) © 2026 知行工作室 · [https://w3b.pub/](https://w3b.pub/) · support@w3b.pub
+[GPL-3.0](LICENSE) © 2026 知行工作室 · [https://w3b.pub/](https://w3b.pub/) · support@w3b.pub
