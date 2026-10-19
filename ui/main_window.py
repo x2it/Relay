@@ -1388,7 +1388,7 @@ class MainWindow:
             self.prog_lbl.configure(text=f"已锁定 {p['ip']}:{p['port']}")
 
     def _unlock(self):
-        self.rotator.lock(None)
+        self.rotator.unlock()
         self._update_status_bar()
         self.prog_lbl.configure(text="已解除锁定，恢复自动切换")
 
@@ -1569,6 +1569,10 @@ class MainWindow:
         if row:
             if row not in self.tree.selection():
                 self.tree.selection_set(row)
+            # 按锁定状态启停菜单项：未锁定时「解除锁定」置灰
+            locked = self.rotator.is_locked()
+            self.menu.entryconfigure("解除锁定",
+                                     state="normal" if locked else "disabled")
             self.menu.tk_popup(event.x_root, event.y_root)
 
     def _on_double_click(self, event):

@@ -351,8 +351,37 @@ class ProxyRotator:
         alive.sort(key=lambda p: p.get("latency_ms", 99999))
         return alive
 
+    # ---------- 锁定：固定当前上游，不被自动轮换 ----------
+
+    def lock(self, proxy: Optional[Dict] = None):
+        """锁定指定上游代理（即使失败也不自动切换）；传 None 解除锁定。线程安全。"""
+        with self._lock:
+            if proxy is None:
+                self._locked = None
+                return
+            self._locked = proxy
+            self._current = proxy
+
+    def unlock(self):
+        """解除锁定，恢复自动轮换。"""
+        with self._lock:
+            self._locked = None
+
+    def is_locked(self) -> bool:
+        """当前是否处于锁定状态。"""
+        with self._lock:
+            return self._locked is not None
+
+    def locked_proxy(self) -> Optional[Dict]:
+        """返回当前锁定的代理（未锁定返回 None）。"""
+        with self._lock:
+            return self._locked
+
     def current(self) -> Optional[Dict]:
         with self._lock:
+            # 锁定时直接返回锁定代理，不参与自动选优/轮换
+            if self._locked is not None:
+                return self._locked
             if self._current and self._current.get("alive"):
                 return self._current
             cands = self._candidates()
