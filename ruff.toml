@@ -1,0 +1,8 @@
+# Ruff 配置：桌面端静态检查基线。
+# 保留 F（pyflakes：未定义名/未用导入/未用变量，抓真实回归）+ E9（语法错误）；
+# 历史代码的紧凑写法（E701/E702/E722 等）不在本次强制范围内。
+target-version = "py312"
+
+[lint]
+select = ["F", "E9"]
+exclude = [".git", ".ruff_cache", "android", "build", "dist"]

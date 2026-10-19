@@ -1,0 +1,36 @@
+name: CI
+
+# 桌面端（Windows/Python3+tkinter）静态检查 + 单元测试。
+# 仅在 ubuntu 上跑编译检查/ruff/pytest；Windows 打包（PyInstaller exe）不在 CI 内。
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  desktop-test:
+    name: Desktop · Python 3.12
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Compile check (py_compile)
+        run: python -m compileall -q main.py config.py make_icon.py core ui
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: pytest
+        run: pytest -q
