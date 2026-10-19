@@ -2,7 +2,7 @@
 
 ![Version](https://img.shields.io/github/v/release/x2it/Relay)
 
-免费代理工具，提供 Windows 桌面版与 Android 版，一键抓取、验证、转发公开代理与加密节点。统一 terminal 暗色风格。
+免费代理工具，提供 Windows 桌面版与 Android 版，一键抓取、验证、转发公开代理与加密节点。界面统一极简暗色风格。
 
 **Relay** is a free proxy toolbox with two editions — a Windows desktop app (Python + tkinter) and an Android VPN app (Kotlin + Compose). It fetches public proxies from 44 open sources, runs four-layer validation, and forwards them through a local HTTP proxy or sing-box TUN tunnel. Supports HTTP/HTTPS/SOCKS4/SOCKS5 plus encrypted nodes (SS/VMess/VLESS/Trojan).
 
@@ -19,11 +19,11 @@
 
 ## Relay Desktop（Windows 桌面版）
 
-Python + tkinter 的终端风格代理工具，与 Android 版功能对齐。
+Python + tkinter 的桌面代理工具，与 Android 版功能对齐。
 
 ### 功能
 
-- **terminal 暗色 UI**：`[HOME][LIST][CONF]` 导航、等宽字体、`[●]/[○]` 状态标记
+- **极简暗色 UI**：`[HOME][LIST][CONF]` 导航、等宽字体、`[●]/[○]` 状态标记
 - **代理抓取**：内置 44 个开源数据源（A/B/C/D/E 五类），GitHub 镜像自动回退，抓取状态实时回显
 - **全协议支持**：HTTP / HTTPS / SOCKS4 / SOCKS5 + 加密节点 SS / VMess / VLESS / Trojan
 - **订阅解析**：Base64 整体解码 + 分享链接逐行识别（`ss://` `vmess://` `vless://` `trojan://`）
@@ -110,7 +110,7 @@ cd android
 │   ├── fetcher.py        # 多源并发抓取 + 镜像回退 + 状态回显
 │   ├── checker.py        # 验证与测速
 │   └── local_proxy.py    # 本地代理服务器 + 系统代理管理
-├── ui/                   # 桌面版 terminal 风格 UI
+├── ui/                   # 桌面版极简暗色风格 UI
 ├── config.py             # 全局配置 + 44 个内置数据源
 ├── main.py               # 桌面版入口
 └── README.md
