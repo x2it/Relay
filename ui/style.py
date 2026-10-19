@@ -7,7 +7,6 @@
   行内操作 = [ed] 编辑 / [rm] 删除
   禁止使用 [x] / [X]（易被误读为"关闭/错误"）。
 """
-import math
 import tkinter as tk
 from tkinter import ttk
 
@@ -153,7 +152,6 @@ def apply_style(root: tk.Tk):
         pass
 
     f = (FONT_FAMILY, FONT_SIZE)
-    fb = (FONT_FAMILY, FONT_SIZE, "bold")
 
     # Frame
     s.configure("TFrame", background=theme.COLOR_BG)
@@ -239,14 +237,6 @@ def apply_style(root: tk.Tk):
 
 def _round_rect(canvas, x, y, w, h, r, **kw):
     """在 canvas 上画圆角矩形。"""
-    points = []
-    for px, py, sx, sy in [
-        (x + r, y, 1, 1), (x + w - r, y, 1, 1),
-        (x + w, y + r, 1, 1), (x + w, y + h - r, 1, 1),
-        (x + w - r, y + h, 1, 1), (x + r, y + h, 1, 1),
-        (x, y + h - r, 1, 1), (x, y + r, 1, 1),
-    ]:
-        pass
     # 用 create_polygon + smooth 近似圆角
     return canvas.create_polygon(
         x + r, y,

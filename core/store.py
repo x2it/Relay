@@ -2,9 +2,7 @@
 """代理列表存储、导入、导出。"""
 import json
 import os
-import time
 import csv
-import io
 from typing import List, Dict, Optional
 
 from config import (PROXY_DB, SOURCES_FILE, SETTINGS_FILE, DEFAULT_SOURCES,
@@ -151,7 +149,7 @@ def export_txt(proxies: List[Dict], path: str) -> None:
     """按协议分块导出。普通代理为 ip:port；加密代理导出分享链接。"""
     from core.protocols.links import to_share_link
     lines = []
-    for proto in ["http", "https", "socks5", "ss", "vmess", "vless", "trojan"]:
+    for proto in ["http", "https", "socks4", "socks5", "ss", "vmess", "vless", "trojan"]:
         items = [p for p in proxies if p["protocol"] == proto]
         if items:
             lines.append(f"# {proto}")
@@ -233,7 +231,8 @@ def import_file(path: str) -> List[Dict]:
                 continue
             if line.startswith("#"):
                 tag = line[1:].strip().lower()
-                if tag in ("http", "https", "socks5", "ss", "vmess", "vless", "trojan"):
+                if tag in ("http", "https", "socks4", "socks5",
+                           "ss", "vmess", "vless", "trojan"):
                     cur_proto = tag
                 continue
             if "://" in line:

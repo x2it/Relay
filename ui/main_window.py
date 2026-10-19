@@ -6,8 +6,8 @@ import threading
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
-from config import (APP_NAME, APP_VERSION, APP_COPYRIGHT, FONT_FAMILY, FONT_SIZE,
-                    DEFAULT_LOCAL_HOST, DEFAULT_LOCAL_PORT, MODE_LABELS,
+from config import (APP_NAME, APP_VERSION, FONT_FAMILY, FONT_SIZE,
+                    MODE_LABELS,
                     theme)
 from ui.style import (apply_style, RoundedButton, StatusBar, Card, Icon, NavItem,
                       TermLine, RelayEntry)
@@ -146,7 +146,7 @@ class MainWindow:
             it.pack(side="left", padx=6)
 
         # 帮助（常驻，ghost 样式不抢戏但始终可见）
-        RoundedButton(top, f"? 帮助", command=self._open_help, kind="ghost").pack(
+        RoundedButton(top, "? 帮助", command=self._open_help, kind="ghost").pack(
             side="right", padx=(6, 0), pady=9)
 
         # 紧急恢复（始终可见，小而醒目）
@@ -364,7 +364,7 @@ class MainWindow:
         self._vsep(row2)
         RoundedButton(row2, f"{Icon.CLEAR} 清空不可用", command=self._on_clear_dead, kind="ghost").pack(side="left", padx=6)
         RoundedButton(row2, f"{Icon.DELETE} 删除选中", command=self._on_delete, kind="danger").pack(side="left", padx=6)
-        self.btn_sys_proxy = RoundedButton(row2, f"系统代理：关", command=self._on_toggle_system_proxy, kind="soft")
+        self.btn_sys_proxy = RoundedButton(row2, "系统代理：关", command=self._on_toggle_system_proxy, kind="soft")
         self.btn_sys_proxy.pack(side="right", padx=(6, 0))
 
         # 进程可视化行
@@ -785,7 +785,7 @@ class MainWindow:
                     self._set_busy(False)
             except Exception as e:
                 try:
-                    self.root.after(0, lambda: self._fetch_error(e))
+                    self.root.after(0, lambda err=e: self._fetch_error(err))
                 except Exception:
                     self._set_busy(False)
 
@@ -949,7 +949,7 @@ class MainWindow:
                     self._set_busy(False)
             except Exception as e:
                 try:
-                    self.root.after(0, lambda: self._fetch_error(e))
+                    self.root.after(0, lambda err=e: self._fetch_error(err))
                 except Exception:
                     self._set_busy(False)
 
@@ -994,7 +994,7 @@ class MainWindow:
                     self._set_busy(False)
             except Exception as e:
                 try:
-                    self.root.after(0, lambda: self._check_error(e))
+                    self.root.after(0, lambda err=e: self._check_error(err))
                 except Exception:
                     self._set_busy(False)
 
@@ -1091,7 +1091,7 @@ class MainWindow:
         def bad(t): write(f"  ✕ {t}", "fail")
         def w(t): write(f"  ⚠ {t}", "warn")
 
-        import socket, threading, time
+        import socket, time
 
         # === 5 项检查 ===
         write("")
@@ -1218,7 +1218,7 @@ class MainWindow:
                     first_line = resp.split(b'\r\n', 1)[0][:120]
                     write(f"    首行：{first_line}", "dim")
                 else:
-                    w(f"联通但无响应（正常，该路径会走HTTP逻辑，结果不影响）")
+                    w("联通但无响应（正常，该路径会走HTTP逻辑，结果不影响）")
                 # 统计栏请求计数校验
                 st = self.server.stats
                 if st["requests"] > 0:
@@ -1296,7 +1296,7 @@ class MainWindow:
             # 关闭
             self.sys_proxy_mgr.restore()
             self._update_sys_proxy_btn()
-            self.status.set("local", f"系统代理已关闭 · 流量直连")
+            self.status.set("local", "系统代理已关闭 · 流量直连")
         else:
             # 开启：必须先有本地代理 + 可用上游
             if not self.server or not self.server._running:

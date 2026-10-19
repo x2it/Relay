@@ -8,6 +8,11 @@ from . import ss, trojan, vless, vmess
 from .tlsio import tls_over_stream
 from .links import parse_link, parse_subscription, to_share_link
 
+__all__ = ["TunnelStream", "connect_proxy", "tls_over_stream",
+           "parse_link", "parse_subscription", "to_share_link",
+           "ENCRYPTED_PROTOCOLS", "TUNNEL_PROTOCOLS", "ALL_PROTOCOLS",
+           "PROTOCOL_LABELS"]
+
 # 加密隧道协议（连上服务器后即直达目标站点）
 ENCRYPTED_PROTOCOLS = ("ss", "vmess", "vless", "trojan")
 # 隧道类协议：连接建立后即为"到目标站点"的直连隧道（与 HTTP 上游不同）

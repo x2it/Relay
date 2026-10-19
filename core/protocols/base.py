@@ -14,7 +14,6 @@ recv 语义约定（供管道区分“超时”与“连接结束”）：
 - 超时且无缓冲数据：抛出 socket.timeout（管道据此继续等待）
 - 真正 EOF：返回 b""
 """
-import socket
 
 
 class TunnelStream:

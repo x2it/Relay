@@ -360,9 +360,6 @@ def check_batch(proxies: List[Dict],
     - 分块 submit：点取消后还没入池的任务不再提交，响应速度从"几万个任务全跑完"
       缩成"当前 chunk + worker 数"内即退出。
     """
-    import threading as _th  # 避免循环 import 告警（checker 顶部已 import threading，
-                             # 这里加别名兼容万一将来改名，实际用顶部的即可）
-
     targets = []
     for p in proxies:
         if only_unchecked and p.get("last_check"):

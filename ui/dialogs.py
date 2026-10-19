@@ -3,10 +3,9 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from config import (FONT_FAMILY, FONT_SIZE, CATEGORY_LABELS, PROTOCOL_LABELS,
+from config import (FONT_FAMILY, FONT_SIZE, PROTOCOL_LABELS,
                     theme, APP_NAME)
-from ui.style import RoundedButton, Icon, RelayEntry, DialogTitle
-from core import store
+from ui.style import RoundedButton, RelayEntry, DialogTitle
 
 
 def _entry(parent, **kw):

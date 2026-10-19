@@ -19,7 +19,6 @@ import threading
 import time
 import secrets
 import atexit
-import sys
 import ipaddress
 from collections import deque
 from typing import List, Dict, Optional, Callable
@@ -868,7 +867,6 @@ class LocalProxyServer:
     def _check_auth(self, header_bytes: bytes) -> bool:
         if not self.auth_token:
             return True
-        head = header_bytes.split(b"\r\n", 1)[0].decode("latin-1", "ignore")
         # 简单校验 Proxy-Authorization 或自定义 X-Relay-Token
         for line in header_bytes.split(b"\r\n"):
             try:

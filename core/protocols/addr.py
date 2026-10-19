@@ -53,7 +53,7 @@ def decode_socks_addr(data: bytes, offset: int = 0):
         offset += 1
         if offset + dlen + 2 > len(data):
             raise ValueError("域名数据不足")
-        host = data[offset:offset + dlen].decode("idna", "ignore")
+        host = data[offset:offset + dlen].decode("ascii", "ignore")
         offset += dlen
     else:
         raise ValueError(f"未知地址类型: {atyp}")
@@ -109,7 +109,7 @@ def decode_v2ray_addr(data: bytes, offset: int = 0):
         offset += 1
         if offset + dlen > len(data):
             raise ValueError("域名数据不足")
-        host = data[offset:offset + dlen].decode("idna", "ignore")
+        host = data[offset:offset + dlen].decode("ascii", "ignore")
         offset += dlen
     else:
         raise ValueError(f"未知地址类型: {atyp}")
