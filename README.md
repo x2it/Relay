@@ -123,15 +123,18 @@ CI 中由 GitHub Actions 自动执行上述两步。
 │   ├── app/src/main/     # Kotlin 源码
 │   ├── scripts/          # libbox 内核构建脚本
 │   └── build.gradle.kts
-├── core/                 # 桌面版核心（抓取/验证/转发/协议）
+├── core/                 # 桌面版核心（抓取/验证/转发/协议/存储）
 │   ├── protocols/        # SS/VMess/VLESS/Trojan 协议实现
 │   ├── fetcher.py        # 多源并发抓取 + 镜像回退 + 状态回显
 │   ├── checker.py        # 验证与测速
-│   └── local_proxy.py    # 本地代理服务器 + 系统代理管理
+│   ├── local_proxy.py    # 本地代理服务器 + 系统代理管理
+│   └── store.py          # 代理池持久化存储
+├── data/                 # 内置数据源
+│   └── sources.json      # 44 个开源数据源（A/B/C/D/E 五类，含加密节点订阅）
 ├── tests/                # 桌面版单元测试（pytest）
 ├── ui/                   # 桌面版极简极客风格 UI
 ├── .github/workflows/    # CI（Python 检查 + Android 构建）
-├── config.py             # 全局配置 + 44 个内置数据源
+├── config.py             # 全局配置与常量
 ├── main.py               # 桌面版入口
 └── README.md
 ```
